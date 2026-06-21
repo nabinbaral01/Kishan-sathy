@@ -1,0 +1,35 @@
+{
+  "name": "kisan-sathi",
+  "version": "1.0.0",
+  "description": "Kisan Sathi - Your Smart Farming Partner. Full-stack smart agriculture platform.",
+  "main": "server/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "seed": "node server/seed.js"
+  },
+  "keywords": [
+    "agriculture",
+    "farming",
+    "kisan",
+    "qr",
+    "crop-management"
+  ],
+  "author": "Kisan Sathi",
+  "license": "MIT",
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.14.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-async-errors": "^3.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "qrcode": "^1.5.4",
+    "selfsigned": "^5.5.0"
+  }
+}
