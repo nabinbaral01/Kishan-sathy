@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="theme-color" content="#2e7d32" />
+  <title>🌾 Kisan Sathi — Your Smart Farming Partner</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- AUTH -->
+  <div id="auth-view">
+    <div class="auth-card">
+      <div class="brand"><i data-lucide="wheat"></i></div>
+      <h2 style="text-align:center">Kisan Sathi</h2>
+      <p class="muted" style="text-align:center;margin-top:-8px">Your Smart Farming Partner</p>
+
+      <div id="login-form">
+        <input id="login-id" placeholder="Phone or Email" autocomplete="username" />
+        <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" />
+        <button class="btn" onclick="App.login()">Login</button>
+        <p class="error" id="login-err"></p>
+        <p class="muted" style="text-align:center">
+          New here? <button class="link" onclick="App.toggleAuth(true)">Create account</button>
+        </p>
+        <details class="muted"><summary>Demo logins</summary>
+          Admin: 9800000000 / admin123<br>Expert: 9811111111 / expert123<br>
+          Farmer: 9822222222 / farmer123
+        </details>
+      </div>
+
+      <div id="register-form" class="hidden">
+        <input id="reg-name" placeholder="Full name" />
+        <input id="reg-phone" placeholder="Phone" />
+        <input id="reg-email" placeholder="Email (optional)" />
+        <select id="reg-role" onchange="App.onRoleChange()">
+          <option value="farmer">👨‍🌾 Farmer</option>
+          <option value="expert">🧑‍🔬 Agriculture Expert</option>
+        </select>
+        <select id="reg-ward">
+          <option value="">🏘️ Select your Ward (Taplejung)</option>
+          <option value="1">Ward No. 1</option>
+          <option value="2">Ward No. 2</option>
+          <option value="3">Ward No. 3</option>
+          <option value="4">Ward No. 4</option>
+          <option value="5">Ward No. 5</option>
+          <option value="6">Ward No. 6</option>
+          <option value="7">Ward No. 7</option>
+          <option value="8">Ward No. 8</option>
+          <option value="9">Ward No. 9</option>
+          <option value="10">Ward No. 10</option>
+          <option value="11">Ward No. 11</option>
+        </select>
+        <input id="reg-pass" type="password" placeholder="Password" />
+        <button class="btn" onclick="App.register()">Register</button>
+        <p class="error" id="reg-err"></p>
+        <p class="muted" style="text-align:center">
+          Have an account? <button class="link" onclick="App.toggleAuth(false)">Login</button>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app-view" class="hidden">
+    <div class="topbar">
+      <span style="font-size:1.5rem"><i data-lucide="wheat" style="width:1.4rem;height:1.4rem;vertical-align:-0.2rem"></i></span>
+      <h1>Kisan Sathi <span class="tag" id="user-tag"></span></h1>
+      <button onclick="App.logout()">Logout</button>
+    </div>
+    <div class="wrap" id="screen"><!-- screens render here --></div>
+    <nav class="bottom-nav" id="bottom-nav"></nav>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <!-- Lucide: professional inline-SVG icon set (replaces <i data-lucide>). -->
+  <script src="/lucide.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
