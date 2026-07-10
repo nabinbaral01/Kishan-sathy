@@ -44,7 +44,7 @@
 
     // ---- bottom nav ----
     'Home': 'गृह',
-    'My Crops': 'मेरा बाली',
+    'My Crops': 'मेरो बाली',
     'Bazar': 'बजार',
     'Expert': 'विशेषज्ञ',
     'Alerts': 'सूचनाहरू',
