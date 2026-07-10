@@ -101,9 +101,10 @@ const App = (() => {
   // createIcons() so its own replacements don't retrigger the observer.
   let iconObserver;
   function renderIcons() {
-    if (!window.lucide) return;
     if (iconObserver) iconObserver.disconnect();
-    try { window.lucide.createIcons(); } catch { /* ignore */ }
+    try { if (window.lucide) window.lucide.createIcons(); } catch { /* ignore */ }
+    // Translate the freshly-rendered DOM to Nepali if that language is selected.
+    try { if (window.I18N) window.I18N.apply(document.body); } catch { /* ignore */ }
     if (iconObserver) iconObserver.observe(document.body, { childList: true, subtree: true });
   }
   function startIconObserver() {
@@ -171,6 +172,11 @@ const App = (() => {
   function boot() {
     $('auth-view').classList.add('hidden');
     $('app-view').classList.remove('hidden');
+    // First login on this device: follow the account's chosen language. After that
+    // the on-screen ने/EN toggle (saved in localStorage) stays in control.
+    if (window.I18N && user.language && !localStorage.getItem('ks_lang')) {
+      window.I18N.setLang(user.language === 'ne' ? 'ne' : 'en');
+    }
     $('user-tag').textContent = `${user.name} · ${labelRole(user.role)}`;
     $('user-tag').style.cursor = 'pointer';
     $('user-tag').onclick = () => go('myProfile'); // tap your name -> profile
@@ -1079,9 +1085,10 @@ const App = (() => {
       if (!body.name) return toast('Name cannot be empty');
       try {
         const { user: updated } = await api('/users/' + user.id, { method: 'PATCH', body });
-        user = { ...user, name: updated.name }; // keep session/topbar in sync
+        user = { ...user, name: updated.name, language: body.language }; // keep session/topbar in sync
         localStorage.setItem('ks_user', JSON.stringify(user));
         $('user-tag').textContent = `${user.name} · ${labelRole(user.role)}`;
+        if (window.I18N) window.I18N.setLang(body.language === 'ne' ? 'ne' : 'en'); // apply chosen language now
         ctx.avatarImg = null;
         toast('Profile updated');
       } catch (e) { toast(e.message); }
