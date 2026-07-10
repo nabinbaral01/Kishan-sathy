@@ -53,4 +53,28 @@ router.get('/wards', authRequired, requireRole('super_admin'), async (_req, res)
   res.json({ wards: Object.values(byWard) });
 });
 
+/**
+ * GET /api/analytics/outbreaks (admin)
+ * Early-warning: wards where 2+ different farmers reported the SAME disease in the
+ * last 30 days. Healthy ("No Disease") results are ignored.
+ */
+router.get('/outbreaks', authRequired, requireRole('super_admin'), async (_req, res) => {
+  const outbreaks = await all(`
+    SELECT u.ward AS ward,
+           d.disease_name AS disease,
+           COUNT(*) AS reports,
+           COUNT(DISTINCT d.farmer_id) AS farmers,
+           MAX(d.created_at) AS last_at
+      FROM disease_detections d
+      JOIN users u ON u.id = d.farmer_id
+     WHERE u.ward IS NOT NULL
+       AND d.disease_name IS NOT NULL
+       AND d.disease_name NOT LIKE 'No Disease%'
+       AND d.created_at >= datetime('now','-30 days')
+     GROUP BY u.ward, d.disease_name
+    HAVING COUNT(DISTINCT d.farmer_id) >= 2
+     ORDER BY farmers DESC, reports DESC`);
+  res.json({ outbreaks });
+});
+
 module.exports = router;

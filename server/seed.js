@@ -37,6 +37,8 @@ async function seed() {
   // Farmers belong to a ward (1–11) of Taplejung Nagarpalika.
   const ramId = (await insUser('Ram Bahadur', 'farmer', '9822222222', 'ram@example.com', 'farmer123', 'ne', 3)).lastInsertRowid;
   const gitaId = (await insUser('Gita Thapa', 'farmer', '9833333333', 'gita@example.com', 'farmer123', 'ne', 7)).lastInsertRowid;
+  // A second Ward-3 farmer — used to demo the disease-outbreak early-warning.
+  const bhimId = (await insUser('Bhim Rai', 'farmer', '9844444444', 'bhim@example.com', 'farmer123', 'ne', 3)).lastInsertRowid;
 
   // Farms
   const insFarm = (...v) =>
@@ -153,6 +155,23 @@ async function seed() {
   const insMsg = (...v) => run(`INSERT INTO messages (farmer_id, expert_id, sender_role, text, image) VALUES (?,?,?,?,?)`, v);
   await insMsg(ramId, null, 'farmer', 'My tomato leaves are turning yellow. What should I do?', null);
   await insMsg(ramId, expertId, 'expert', 'Likely nitrogen deficiency. Apply urea (46-0-0) and a 2% urea foliar spray. Send a photo if it spreads.', null);
+
+  // Disease detections — two Ward-3 farmers with the SAME disease => an outbreak
+  // the admin's early-warning screen will flag.
+  const insDet = (...v) => run(
+    `INSERT INTO disease_detections (farmer_id, crop_id, disease_name, symptoms, cause, treatment, fertilizer, prevention, confidence)
+     VALUES (?,?,?,?,?,?,?,?,?)`, v);
+  const blight = [
+    'Early Blight (Alternaria solani)',
+    'Brown concentric-ring spots on older leaves; yellowing around lesions.',
+    'Fungal infection favoured by warm, humid weather and leaf wetness.',
+    'Remove affected leaves; apply Mancozeb or copper fungicide every 7–10 days.',
+    'Balanced NPK with extra potassium to strengthen plants.',
+    'Crop rotation, drip irrigation to keep foliage dry, adequate spacing.',
+    0.88,
+  ];
+  await insDet(ramId, tomatoId, ...blight);
+  await insDet(bhimId, null, ...blight);
 
   console.log('✅ Seed complete.');
   console.log('\nDemo logins (identifier / password):');

@@ -1277,9 +1277,15 @@ const App = (() => {
     async admin() {
       // reset drill-down context so top-level cards start fresh
       ctx.farmerId = null; ctx.farmerName = null; ctx.farmId = null;
-      const s = await api('/analytics/summary');
+      const [s, ob] = await Promise.all([api('/analytics/summary'), api('/analytics/outbreaks')]);
       const t = s.totals;
-      $('screen').innerHTML = `<div class="panel"><h2>${icon('layout-dashboard')} Super Admin Dashboard</h2>
+      const outbreaks = ob.outbreaks || [];
+      $('screen').innerHTML = `
+        ${outbreaks.length ? `<button class="panel" style="width:100%;text-align:left;cursor:pointer;border:2px solid #c62828;background:rgba(198,40,40,.08)" onclick="App.go('adminOutbreaks')">
+          <strong style="color:#c62828">${icon('triangle-alert')} ${outbreaks.length} disease outbreak${outbreaks.length > 1 ? 's' : ''} detected</strong>
+          <div class="muted" style="font-size:.78rem">Tap to see which wards need an agri-technician.</div>
+        </button>` : ''}
+        <div class="panel"><h2>${icon('layout-dashboard')} Super Admin Dashboard</h2>
         <p class="muted">Tap any card to drill in.</p>
         <div class="cards">
           ${statCard(icon('user-round'), t.farmers, 'Farmers', 'adminFarmers')}${statCard(icon('user-round-cog'), t.experts, 'Experts', 'manageExperts')}
@@ -1287,6 +1293,7 @@ const App = (() => {
           ${statCard(icon('stethoscope'), t.disease_reports, 'Disease Reports', 'adminDiseases')}
         </div>
         <button class="btn" style="width:100%;margin-top:10px;background:#00695c;color:#fff" onclick="App.go('adminWards')">${icon('map')} Open Ward Overview</button>
+        <button class="btn" style="width:100%;margin-top:8px;background:#c62828;color:#fff" onclick="App.go('adminOutbreaks')">${icon('triangle-alert')} Disease Outbreak Alerts</button>
         </div>
         <div class="panel"><h3>Crops by Category</h3>${s.crops_by_category.map((r) => `<div class="row"><span>${esc(r.category)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
         <div class="panel"><h3>Crop Health</h3>${s.crop_health.map((r) => `<div class="row"><span>${esc(r.growth_status)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
@@ -1314,6 +1321,22 @@ const App = (() => {
         </div>`;
     },
     filterFarmersByWard(w) { ctx.farmerWard = w || null; screens.adminFarmers(); },
+
+    /* Disease outbreak early-warning: wards with 2+ farmers on the same disease. */
+    async adminOutbreaks() {
+      const { outbreaks } = await api('/analytics/outbreaks');
+      $('screen').innerHTML = `<button class="back" onclick="App.go('admin')">← Dashboard</button>
+        <div class="panel"><h2>${icon('triangle-alert')} Disease Outbreak Alerts</h2>
+          <p class="muted">Wards where 2 or more farmers reported the same disease in the last 30 days. Send a JT/JTA to inspect.</p>
+        </div>
+        ${outbreaks.length ? outbreaks.map((o) => `
+          <div class="panel" style="border-left:4px solid #c62828;margin-bottom:8px">
+            <div class="section-head"><h3 style="margin:0;color:#c62828">${icon('map-pin')} Ward No. ${o.ward}</h3><span class="badge">${o.farmers} farmers</span></div>
+            <div><strong>${esc(o.disease)}</strong></div>
+            <div class="muted" style="font-size:.78rem">${o.reports} reports · last report: ${esc((o.last_at || '').slice(0, 10))}</div>
+            <button class="btn btn-sm btn-ghost" style="margin-top:6px" onclick="App.go('adminFarmers',{farmerWard:${o.ward}})">View ward farmers</button>
+          </div>`).join('') : `<div class="panel"><p class="muted">✅ No outbreaks detected — all clear.</p></div>`}`;
+    },
 
     /* Ward-wise control room: per-ward farmers/farms/crops/sales for Taplejung. */
     async adminWards() {
