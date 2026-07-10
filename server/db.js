@@ -360,8 +360,14 @@ async function initSchema() {
 }
 
 let readyPromise = null;
-/** Ensure the schema exists. Memoized so it only runs once per process. */
+/**
+ * Ensure the schema exists. Memoized so it only runs once per process.
+ * In production the schema already exists, so set SKIP_DB_INIT=1 to skip the
+ * (many round-trip) schema check on every serverless cold start — a big speed-up.
+ * The seed script and local dev still run it (they don't set the flag).
+ */
 function ensureReady() {
+  if (process.env.SKIP_DB_INIT === '1') return Promise.resolve();
   if (!readyPromise) readyPromise = initSchema();
   return readyPromise;
 }

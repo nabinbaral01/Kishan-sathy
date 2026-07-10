@@ -295,8 +295,11 @@
     if (c.placeholder != null) el.setAttribute('placeholder', lang === 'ne' ? tr(c.placeholder) : c.placeholder);
     if (c.title != null) el.setAttribute('title', lang === 'ne' ? tr(c.title) : c.title);
   }
-  function apply(root) {
+  function apply(root, force) {
     root = root || document.body;
+    // English is the source language, so on normal renders there's nothing to do.
+    // Only walk the DOM when showing Nepali, or when explicitly toggling (force).
+    if (lang !== 'ne' && !force) { updateToggle(); return; }
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(n) {
         const p = n.parentNode;
@@ -321,7 +324,7 @@
   function setLang(l) {
     lang = l === 'ne' ? 'ne' : 'en';
     localStorage.setItem('ks_lang', lang);
-    apply(document.body);
+    apply(document.body, true); // force: restore English or apply Nepali across the page
   }
   function toggle() { setLang(lang === 'ne' ? 'en' : 'ne'); }
 
