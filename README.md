@@ -7,6 +7,7 @@ disease detection, expert chat, market prices, weather and notifications.
 This first build is **backend + API first**: a complete, role-aware REST API over
 SQLite, plus a thin responsive web UI (works in any phone browser, no app store).
 
+Site Link: https://kisansathi01.vercel.app/
 ---
 
 ## Tech stack
