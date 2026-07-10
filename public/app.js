@@ -1285,7 +1285,9 @@ const App = (() => {
           ${statCard(icon('user-round'), t.farmers, 'Farmers', 'adminFarmers')}${statCard(icon('user-round-cog'), t.experts, 'Experts', 'manageExperts')}
           ${statCard(icon('house'), t.farms, 'Farms', 'adminFarms')}${statCard(icon('sprout'), t.crops, 'Crops', 'adminCrops')}
           ${statCard(icon('stethoscope'), t.disease_reports, 'Disease Reports', 'adminDiseases')}
-        </div></div>
+        </div>
+        <button class="btn" style="width:100%;margin-top:10px;background:#00695c;color:#fff" onclick="App.go('adminWards')">${icon('map')} Open Ward Overview</button>
+        </div>
         <div class="panel"><h3>Crops by Category</h3>${s.crops_by_category.map((r) => `<div class="row"><span>${esc(r.category)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
         <div class="panel"><h3>Crop Health</h3>${s.crop_health.map((r) => `<div class="row"><span>${esc(r.growth_status)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
         <div class="panel"><h3>Top Disease Reports</h3>${s.recent_diseases.map((r) => `<div class="row"><span>${esc(r.disease_name)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">None</p>'}</div>`;
@@ -1312,6 +1314,27 @@ const App = (() => {
         </div>`;
     },
     filterFarmersByWard(w) { ctx.farmerWard = w || null; screens.adminFarmers(); },
+
+    /* Ward-wise control room: per-ward farmers/farms/crops/sales for Taplejung. */
+    async adminWards() {
+      const { wards } = await api('/analytics/wards');
+      const maxF = Math.max(1, ...wards.map((w) => w.farmers));
+      const totalFarmers = wards.reduce((s, w) => s + w.farmers, 0);
+      $('screen').innerHTML = `<button class="back" onclick="App.go('admin')">← Dashboard</button>
+        <div class="panel"><h2>${icon('map')} Ward Overview — Taplejung</h2>
+          <p class="muted">Farmers, farms, crops and sales for each ward. Tap a ward to see its farmers.</p>
+          <div class="row"><span>Registered farmers with a ward</span><strong>${totalFarmers}</strong></div>
+        </div>
+        ${wards.map((w) => `
+          <button class="panel" style="display:block;width:100%;text-align:left;cursor:pointer;margin-bottom:8px;border:none" onclick="App.go('adminFarmers',{farmerWard:${w.ward}})">
+            <div class="section-head"><h3 style="margin:0">${icon('map-pin')} Ward No. ${w.ward}</h3><span class="muted">Rs ${money(w.sales)} sales</span></div>
+            <div class="muted" style="font-size:.78rem;margin:2px 0 6px">👨‍🌾 ${w.farmers} farmers · 🏠 ${w.farms} farms · 🌱 ${w.crops} crops</div>
+            <div style="height:8px;background:rgba(0,0,0,.12);border-radius:5px;overflow:hidden">
+              <div style="height:100%;width:${Math.round((w.farmers / maxF) * 100)}%;background:#2e7d32"></div>
+            </div>
+            ${Object.keys(w.categories).length ? `<div class="muted" style="font-size:.72rem;margin-top:6px">${Object.entries(w.categories).map(([c, n]) => `${catEmoji(c)} ${n}`).join(' · ')}</div>` : ''}
+          </button>`).join('')}`;
+    },
 
     /* Drill-down: farms (all, or for one farmer) */
     async adminFarms() {

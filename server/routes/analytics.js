@@ -34,4 +34,23 @@ router.get('/summary', authRequired, requireRole('super_admin'), async (_req, re
   });
 });
 
+/** GET /api/analytics/wards (admin) -> per-ward rollup for Taplejung (wards 1–11) */
+router.get('/wards', authRequired, requireRole('super_admin'), async (_req, res) => {
+  const farmers = await all(`SELECT ward, COUNT(*) c FROM users WHERE role='farmer' AND ward IS NOT NULL GROUP BY ward`);
+  const farms = await all(`SELECT u.ward AS ward, COUNT(*) c FROM farms f JOIN users u ON u.id = f.farmer_id WHERE u.ward IS NOT NULL GROUP BY u.ward`);
+  const crops = await all(`SELECT u.ward AS ward, COUNT(*) c FROM crops cr JOIN users u ON u.id = cr.farmer_id WHERE u.ward IS NOT NULL GROUP BY u.ward`);
+  const sales = await all(`SELECT u.ward AS ward, COALESCE(SUM(s.total_amount),0) t FROM sales s JOIN users u ON u.id = s.farmer_id WHERE u.ward IS NOT NULL GROUP BY u.ward`);
+  const cats = await all(`SELECT u.ward AS ward, cr.category AS category, COUNT(*) c FROM crops cr JOIN users u ON u.id = cr.farmer_id WHERE u.ward IS NOT NULL GROUP BY u.ward, cr.category`);
+
+  const byWard = {};
+  for (let w = 1; w <= 11; w++) byWard[w] = { ward: w, farmers: 0, farms: 0, crops: 0, sales: 0, categories: {} };
+  farmers.forEach((r) => { if (byWard[r.ward]) byWard[r.ward].farmers = r.c; });
+  farms.forEach((r) => { if (byWard[r.ward]) byWard[r.ward].farms = r.c; });
+  crops.forEach((r) => { if (byWard[r.ward]) byWard[r.ward].crops = r.c; });
+  sales.forEach((r) => { if (byWard[r.ward]) byWard[r.ward].sales = Math.round(r.t); });
+  cats.forEach((r) => { if (byWard[r.ward]) byWard[r.ward].categories[r.category] = r.c; });
+
+  res.json({ wards: Object.values(byWard) });
+});
+
 module.exports = router;

@@ -155,6 +155,14 @@
     'View farms': 'खेतहरू हेर्नुहोस्',
     'View crops': 'बालीहरू हेर्नुहोस्',
     'Verify Experts': 'विशेषज्ञ प्रमाणित गर्नुहोस्',
+    'Open Ward Overview': 'वडा अवलोकन खोल्नुहोस्',
+    'Ward Overview — Taplejung': 'वडा अवलोकन — ताप्लेजुङ',
+    'Farmers, farms, crops and sales for each ward. Tap a ward to see its farmers.': 'प्रत्येक वडाको किसान, खेत, बाली र बिक्री। किसानहरू हेर्न वडामा थिच्नुहोस्।',
+    'Registered farmers with a ward': 'वडा भएका दर्ता किसान',
+    'sales': 'बिक्री',
+    'farmers': 'किसान',
+    'farms': 'खेत',
+    'crops': 'बाली',
     'Dashboard ': 'ड्यासबोर्ड ',
 
     // ---- bazar / marketplace ----
