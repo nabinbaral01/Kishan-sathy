@@ -65,6 +65,10 @@ router.patch('/:id', authRequired, requireRole('super_admin'), async (req, res) 
     `UPDATE subsidies SET status = ?, admin_note = ?, decided_at = datetime('now') WHERE id = ?`,
     [status, (req.body.admin_note || '').trim() || null, id]
   );
+  // Keep the Nagarpalika beneficiary registry in sync with this decision
+  // (approved/distributed -> recorded; rejected/pending -> removed). Never let a
+  // registry hiccup break the decision itself.
+  try { await require('./beneficiaries').syncFromSubsidy(id); } catch (e) { console.error('beneficiary sync failed:', e.message); }
   // Notify the farmer of the decision.
   const label = { approved: 'approved', rejected: 'rejected', distributed: 'distributed', pending: 'reopened' }[status];
   await run(

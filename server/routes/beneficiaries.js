@@ -126,26 +126,53 @@ router.delete('/:id', async (req, res) => {
 /** POST /api/beneficiaries/import — bring in approved/distributed subsidy applications. */
 router.post('/import', async (_req, res) => {
   const subs = await all(
-    `SELECT s.id, s.type, s.title, s.amount, s.status, s.decided_at, s.created_at,
-            u.name AS farmer_name, u.phone AS farmer_phone, u.address AS farmer_address, u.ward AS ward
-       FROM subsidies s JOIN users u ON u.id = s.farmer_id
-      WHERE s.status IN ('approved', 'distributed')`
+    `SELECT s.id FROM subsidies s WHERE s.status IN ('approved', 'distributed')`
   );
-  let imported = 0;
+  let imported = 0, updated = 0;
   for (const s of subs) {
-    // Skip anything already imported (matched on the originating subsidy id).
-    const dup = await get(`SELECT id FROM beneficiaries WHERE source_subsidy_id = ?`, [s.id]);
-    if (dup) continue;
-    const remark = s.title ? `Subsidy: ${s.title}` : null;
-    await run(
-      `INSERT INTO beneficiaries (name, age, ward, phone, address, subsidy_type, amount, given_date, status, remarks, source_subsidy_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [s.farmer_name, null, s.ward, s.farmer_phone, s.farmer_address, s.type, s.amount,
-       (s.decided_at || s.created_at || '').slice(0, 10), s.status, remark, s.id]
-    );
-    imported++;
+    const existed = await get(`SELECT id FROM beneficiaries WHERE source_subsidy_id = ?`, [s.id]);
+    await syncFromSubsidy(s.id);
+    if (existed) updated++; else imported++;
   }
-  res.json({ imported, skipped: subs.length - imported });
+  res.json({ imported, skipped: updated });
 });
 
+/**
+ * Keep the registry in sync with a single subsidy application. Called by the
+ * subsidies route whenever a decision changes: approved/distributed -> upsert a
+ * beneficiary row (linked via source_subsidy_id); rejected/pending -> remove the
+ * auto-added row so the ledger only lists people who actually got support.
+ * Manual rows (no source_subsidy_id) are never touched.
+ */
+async function syncFromSubsidy(subsidyId) {
+  await ensureTable();
+  const s = await get(
+    `SELECT s.id, s.type, s.title, s.amount, s.status, s.decided_at, s.created_at,
+            u.name AS farmer_name, u.phone AS farmer_phone, u.address AS farmer_address, u.ward AS ward
+       FROM subsidies s JOIN users u ON u.id = s.farmer_id WHERE s.id = ?`,
+    [subsidyId]
+  );
+  if (!s) return;
+  const existing = await get(`SELECT id FROM beneficiaries WHERE source_subsidy_id = ?`, [s.id]);
+  if (s.status === 'approved' || s.status === 'distributed') {
+    const date = (s.decided_at || s.created_at || '').slice(0, 10);
+    if (existing) {
+      await run(
+        `UPDATE beneficiaries SET status=?, amount=?, subsidy_type=?, given_date=?, ward=? WHERE id=?`,
+        [s.status, s.amount, s.type, date, s.ward, existing.id]
+      );
+    } else {
+      await run(
+        `INSERT INTO beneficiaries (name, age, ward, phone, address, subsidy_type, amount, given_date, status, remarks, source_subsidy_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [s.farmer_name, null, s.ward, s.farmer_phone, s.farmer_address, s.type, s.amount,
+         date, s.status, s.title ? `Subsidy: ${s.title}` : null, s.id]
+      );
+    }
+  } else if (existing) {
+    await run(`DELETE FROM beneficiaries WHERE id = ?`, [existing.id]);
+  }
+}
+
 module.exports = router;
+module.exports.syncFromSubsidy = syncFromSubsidy;
