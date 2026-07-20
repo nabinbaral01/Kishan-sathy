@@ -1221,10 +1221,14 @@ const App = (() => {
         <button class="back" onclick="App.go('${back}')">← Back</button>
         <div class="panel" style="text-align:center">
           <div class="avatar-lg" id="pf-av">${u.avatar ? `<img src="${esc(u.avatar)}"/>` : icon('user-round')}</div>
-          <label class="link" style="display:inline-block;margin-top:6px">Change photo
+          <label class="link" style="display:inline-block;margin-top:6px">${u.role === 'super_admin' ? 'Upload Nagarpalika photo / logo' : 'Change photo'}
             <input type="file" accept="image/*" class="hidden" onchange="App.previewAvatar(this)"/></label>
-          <h2 style="margin:6px 0 0">${esc(u.name)}</h2>
-          <span class="badge">${esc(labelRole(u.role))}</span>
+          ${u.role === 'super_admin'
+            ? `<h2 style="margin:6px 0 0">Nagarpalika ${icon('badge-check', 'verified-tick')}</h2>
+               <span class="badge">Official municipality account</span>
+               <p class="muted" style="margin:6px 0 0;font-size:.78rem">This photo appears on every Nagarpalika post in the Community Feed.</p>`
+            : `<h2 style="margin:6px 0 0">${esc(u.name)}</h2>
+               <span class="badge">${esc(labelRole(u.role))}</span>`}
           <p class="muted">Member since ${(u.created_at || '').slice(0, 10)}</p>
           <button class="btn btn-sm btn-ghost" onclick="App.openUserProfile(${u.id})">${icon('eye')} View public profile</button>
         </div>
@@ -1483,6 +1487,7 @@ const App = (() => {
         <button class="btn" style="width:100%;margin-top:8px;background:#00838f;color:#fff" onclick="App.go('adminProducts',{apCat:null,apQ:'',apStatus:''})">${icon('store')} Manage Bazar Products</button>
         <button class="btn" style="width:100%;margin-top:8px;background:#37474f;color:#fff" onclick="App.go('adminBeneficiaries',{benWard:'',benStatus:'',benQ:'',benEdit:null})">${icon('clipboard-list')} Nagarpalika Records</button>
         <button class="btn" style="width:100%;margin-top:8px;background:#5d4037;color:#fff" onclick="App.go('feed')">${icon('users')} Community Feed (monitor)</button>
+        <button class="btn" style="width:100%;margin-top:8px;background:#455a64;color:#fff" onclick="App.go('myProfile')">${icon('image')} Nagarpalika Profile & Photo</button>
         </div>
         <div class="panel"><h3>Crops by Category</h3>${s.crops_by_category.map((r) => `<div class="row"><span>${esc(r.category)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
         <div class="panel"><h3>Crop Health</h3>${s.crop_health.map((r) => `<div class="row"><span>${esc(r.growth_status)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
