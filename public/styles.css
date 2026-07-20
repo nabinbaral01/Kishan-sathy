@@ -63,6 +63,12 @@ input, select, textarea {
 .feed-act:hover { background: #f2f6f2; }
 .feed-act.liked { color: var(--danger); font-weight: 600; }
 .feed-act.liked .ic { fill: var(--danger); }
+/* Pinned post — stands out at the top of the feed */
+.feed-card.pinned { border: 1.5px solid #1d9bf0; background: #f7fbff; }
+.pin-flag { display: flex; align-items: center; gap: 5px; color: #1d9bf0;
+  font-size: .74rem; font-weight: 700; margin-bottom: 6px; }
+.pin-flag .ic { width: 14px; height: 14px; }
+
 /* Composer photo strip — thumbnails with a ✕ to remove before posting */
 .pv-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .pv-item { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; border: 1px solid #cdd6cd; }

@@ -13,7 +13,7 @@
  */
 const express = require('express');
 const { get, all, run, exec } = require('../db');
-const { authRequired } = require('../middleware/auth');
+const { authRequired, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -54,11 +54,13 @@ function ensureTables() {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
-      // Multi-photo support was added after launch — migrate existing tables.
+      // Columns added after launch — migrate existing tables.
       const cols = await all(`PRAGMA table_info(posts)`);
-      if (!cols.some((c) => c.name === 'images')) {
-        await exec(`ALTER TABLE posts ADD COLUMN images TEXT`);
-      }
+      const has = (n) => cols.some((c) => c.name === n);
+      if (!has('images')) await exec(`ALTER TABLE posts ADD COLUMN images TEXT`);
+      // Nagarpalika can pin a post so it stays at the top of the feed.
+      if (!has('pinned')) await exec(`ALTER TABLE posts ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`);
+      if (!has('pinned_at')) await exec(`ALTER TABLE posts ADD COLUMN pinned_at TEXT`);
     })();
   }
   return ready;
@@ -87,9 +89,13 @@ async function decorate(rows, meId) {
   }));
 }
 
-/** GET /api/feed */
+/** GET /api/feed — pinned posts first (most recently pinned on top), then newest. */
 router.get('/', async (req, res) => {
-  const rows = await all(`SELECT * FROM posts ORDER BY created_at DESC LIMIT 200`);
+  const rows = await all(
+    `SELECT * FROM posts
+      ORDER BY pinned DESC, COALESCE(pinned_at, created_at) DESC
+      LIMIT 200`
+  );
   res.json({ posts: await decorate(rows, req.user.id) });
 });
 
@@ -134,6 +140,19 @@ router.delete('/:id', async (req, res) => {
   await run(`DELETE FROM post_comments WHERE post_id = ?`, [id]);
   await run(`DELETE FROM posts WHERE id = ?`, [id]);
   res.json({ ok: true });
+});
+
+/** POST /api/feed/:id/pin — Nagarpalika pins/unpins any post. */
+router.post('/:id/pin', requireRole('super_admin'), async (req, res) => {
+  const id = Number(req.params.id);
+  const post = await get(`SELECT pinned FROM posts WHERE id = ?`, [id]);
+  if (!post) return res.status(404).json({ error: 'Post not found' });
+  const pinned = post.pinned ? 0 : 1;
+  await run(
+    `UPDATE posts SET pinned = ?, pinned_at = ${pinned ? "datetime('now')" : 'NULL'} WHERE id = ?`,
+    [pinned, id]
+  );
+  res.json({ pinned: !!pinned });
 });
 
 /** POST /api/feed/:id/like — toggle. */

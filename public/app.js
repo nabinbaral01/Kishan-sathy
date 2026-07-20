@@ -432,6 +432,13 @@ const App = (() => {
         }
       } catch (e) { toast(e.message); }
     },
+    async togglePin(id) {
+      try {
+        const { pinned } = await api('/feed/' + id + '/pin', { method: 'POST', body: {} });
+        toast(pinned ? 'Pinned to top of feed' : 'Unpinned');
+        go(ctx._screen === 'post' ? 'post' : 'feed');
+      } catch (e) { toast(e.message); }
+    },
     async deletePost(id) {
       if (!(await confirmDialog('Delete this post?'))) return;
       try { await api('/feed/' + id, { method: 'DELETE' }); toast('Deleted'); go(ctx._screen === 'post' ? 'feed' : 'feed'); }
@@ -2048,13 +2055,15 @@ const App = (() => {
     // `images` is the current shape; `image` covers posts made before multi-photo.
     const imgs = (p.images && p.images.length) ? p.images : (p.image ? [p.image] : []);
     const open = full ? '' : `onclick="App.go('post',{postId:${p.id}})" style="cursor:pointer"`;
-    return `<div class="panel feed-card" style="margin-bottom:8px">
+    return `<div class="panel feed-card ${p.pinned ? 'pinned' : ''}" style="margin-bottom:8px">
+      ${p.pinned ? `<div class="pin-flag">${icon('pin')} Pinned by Nagarpalika</div>` : ''}
       <div style="display:flex;gap:10px;align-items:center">
         <div class="feed-avatar">${p.author_avatar ? `<img src="${esc(p.author_avatar)}"/>` : icon('user-round')}</div>
         <div style="min-width:0;flex:1">
           ${feedAuthor(p.author_role, p.author_name)}<br>
           <span class="muted" style="font-size:.72rem">${p.author_ward ? 'Ward ' + p.author_ward + ' · ' : ''}${timeAgo(p.created_at)}</span>
         </div>
+        ${admin ? `<button class="btn btn-sm btn-ghost" style="padding:6px 8px" title="${p.pinned ? 'Unpin this post' : 'Pin to top of feed'}" onclick="event.stopPropagation();App.togglePin(${p.id})">${icon(p.pinned ? 'pin-off' : 'pin')}</button>` : ''}
         ${canDelete ? `<button class="btn btn-sm" style="background:var(--danger);padding:6px 8px" onclick="event.stopPropagation();App.deletePost(${p.id})">${icon('trash-2')}</button>` : ''}
       </div>
       <div ${open}>
@@ -2452,6 +2461,7 @@ const App = (() => {
     decideSubsidy: (...a) => screens.decideSubsidy(...a),
     previewPostImg: (...a) => screens.previewPostImg(...a),
     removePostImg: (...a) => screens.removePostImg(...a),
+    togglePin: (...a) => screens.togglePin(...a),
     submitPost: (...a) => screens.submitPost(...a),
     toggleLike: (...a) => screens.toggleLike(...a),
     deletePost: (...a) => screens.deletePost(...a),
