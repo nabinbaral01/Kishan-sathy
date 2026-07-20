@@ -933,7 +933,10 @@ const App = (() => {
           ${p.description ? `<p class="muted">${esc(p.description)}</p>` : ''}
         </div>
         ${mine ? `<div class="panel"><p class="muted">This is your listing.</p>
-            <button class="btn btn-sm btn-ghost" onclick="App.go('myShop')">Manage my listings</button></div>`
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-sm btn-ghost" onclick="App.go('myShop')">Manage my listings</button>
+              <button class="btn btn-sm" style="background:var(--danger)" onclick="App.deleteProduct(${p.id}, 'shop')">${icon('trash-2')} Delete this product</button>
+            </div></div>`
           : p.status === 'available' ? `<div class="panel"><h3>${icon('shopping-cart')} Order this</h3>
             <div class="form-grid">
               <input id="ord-qty" type="number" min="1" step="any" value="1" placeholder="Quantity (${esc(p.unit || '')})" oninput="App.orderTotal(${p.price})"/>
