@@ -986,7 +986,7 @@ const App = (() => {
     async previewProductImg(input) {
       const f = input.files && input.files[0];
       if (!f) return;
-      ctx.productImg = await fileToDataUrl(f);
+      ctx.productImg = await compressImage(f, { maxDim: 1280, quality: 0.72 });
       const box = $('pr-preview');
       if (box) box.innerHTML = `<img src="${ctx.productImg}" style="max-width:140px;border-radius:10px"/>`;
     },
@@ -1129,7 +1129,7 @@ const App = (() => {
     async previewAvatar(input) {
       const f = input.files && input.files[0];
       if (!f) return;
-      ctx.avatarImg = await fileToDataUrl(f);
+      ctx.avatarImg = await compressImage(f, { maxDim: 512, quality: 0.75 });
       const box = $('pf-av'); if (box) box.innerHTML = `<img src="${ctx.avatarImg}"/>`;
     },
     async saveProfile() {
@@ -1212,7 +1212,7 @@ const App = (() => {
     },
     async detect() {
       const file = $('d-img').files[0];
-      const image = file ? await fileToDataUrl(file) : undefined;
+      const image = file ? await compressImage(file, { maxDim: 1280, quality: 0.8 }) : undefined;
       const crop_id = $('d-crop') ? ($('d-crop').value || undefined) : undefined;
       try {
         const { detection: d } = await api('/disease/detect', { method: 'POST', body: { image, crop_id, symptom: $('d-symptom').value } });
@@ -1295,7 +1295,7 @@ const App = (() => {
     async saveExpert() {
       const body = { specialization: $('e-specialization').value, bio: $('e-bio').value, available: $('e-available').checked };
       const file = $('e-proof') && $('e-proof').files[0];
-      if (file) body.proof_image = await fileToDataUrl(file);
+      if (file) body.proof_image = await compressImage(file, { maxDim: 1600, quality: 0.82 });
       try { await api('/experts/me', { method: 'PATCH', body }); toast('Saved'); go('experts'); }
       catch (e) { toast(e.message); }
     },
@@ -2010,6 +2010,40 @@ const App = (() => {
   }
   function fileToDataUrl(file) {
     return new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); });
+  }
+
+  /* Shrink + compress a photo in the browser BEFORE upload. Farmers often pick a
+     10 MB gallery image; this downscales it (longest side -> maxDim) and re-encodes
+     as JPEG so it uploads as ~100-300 KB, keeps the page light, and stays under
+     Vercel's 4.5 MB request limit. Falls back to the raw file on any error. */
+  function compressImage(file, { maxDim = 1280, quality = 0.72 } = {}) {
+    return new Promise((resolve) => {
+      if (!file || !/^image\//.test(file.type)) return resolve(fileToDataUrl(file));
+      const reader = new FileReader();
+      reader.onerror = () => resolve(fileToDataUrl(file));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => resolve(reader.result); // couldn't decode -> use original
+        img.onload = () => {
+          try {
+            let { width, height } = img;
+            if (Math.max(width, height) > maxDim) {
+              const scale = maxDim / Math.max(width, height);
+              width = Math.round(width * scale);
+              height = Math.round(height * scale);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width; canvas.height = height;
+            const g = canvas.getContext('2d');
+            g.fillStyle = '#fff'; g.fillRect(0, 0, width, height); // white bg so PNG transparency isn't black
+            g.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          } catch { resolve(reader.result); }
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   /* ---------- init ---------- */
