@@ -1356,6 +1356,7 @@ const App = (() => {
         <button class="btn" style="width:100%;margin-top:10px;background:#00695c;color:#fff" onclick="App.go('adminWards')">${icon('map')} Open Ward Overview</button>
         <button class="btn" style="width:100%;margin-top:8px;background:#c62828;color:#fff" onclick="App.go('adminOutbreaks')">${icon('triangle-alert')} Disease Outbreak Alerts</button>
         <button class="btn" style="width:100%;margin-top:8px;background:#6a1b9a;color:#fff" onclick="App.go('adminSubsidies',{subStatus:'pending'})">${icon('hand-coins')} Subsidy Applications${pendingSubs ? ' (' + pendingSubs + ' pending)' : ''}</button>
+        <button class="btn" style="width:100%;margin-top:8px;background:#00838f;color:#fff" onclick="App.go('adminProducts',{apCat:null,apQ:'',apStatus:''})">${icon('store')} Manage Bazar Products</button>
         </div>
         <div class="panel"><h3>Crops by Category</h3>${s.crops_by_category.map((r) => `<div class="row"><span>${esc(r.category)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
         <div class="panel"><h3>Crop Health</h3>${s.crop_health.map((r) => `<div class="row"><span>${esc(r.growth_status)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
@@ -1458,6 +1459,69 @@ const App = (() => {
             <span class="muted">${esc((d.treatment || '').slice(0, 90))}</span><br>
             <span class="muted" style="font-size:.7rem">${esc(d.created_at)}</span></div></div>`).join('') || '<p class="muted">No reports.</p>'}
         </div>`;
+    },
+
+    /* Admin: manage every Bazar product — search, filter, delete, mark sold/available. */
+    async adminProducts() {
+      const cat = ctx.apCat || '';
+      const q = ctx.apQ || '';
+      const st = ctx.apStatus || '';
+      const params = new URLSearchParams();
+      if (cat) params.set('category', cat);
+      if (q) params.set('q', q);
+      if (st) params.set('status', st);
+      const { products, categories, totals } = await api('/products/admin/all?' + params.toString());
+      $('screen').innerHTML = `
+        <button class="back" onclick="App.go('admin')">← Dashboard</button>
+        <div class="panel">
+          <div class="section-head"><h2>${icon('store')} Manage Bazar Products</h2></div>
+          <p class="muted">Every listing from all sellers. As admin you can remove any product or change its status.</p>
+          <div class="stat-row">
+            <div class="stat"><span class="stat-num">${totals.total}</span><span class="stat-lbl">Total</span></div>
+            <div class="stat"><span class="stat-num">${totals.available}</span><span class="stat-lbl">Available</span></div>
+            <div class="stat"><span class="stat-num">${totals.sold}</span><span class="stat-lbl">Sold</span></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+            <input id="ap-q" placeholder="Search product, location…" value="${esc(q)}" style="margin:0"
+              onkeydown="if(event.key==='Enter')App.apSearch()"/>
+            <button class="btn btn-sm" onclick="App.apSearch()">${icon('search')}</button>
+          </div>
+          <div class="chips-row" style="margin-top:8px">
+            <button class="chip ${!st ? 'chip-on' : ''}" onclick="App.apFilterStatus('')">All</button>
+            <button class="chip ${st === 'available' ? 'chip-on' : ''}" onclick="App.apFilterStatus('available')">Available</button>
+            <button class="chip ${st === 'sold' ? 'chip-on' : ''}" onclick="App.apFilterStatus('sold')">Sold</button>
+          </div>
+          <div class="chips-row" style="margin-top:8px">
+            <button class="chip ${!cat ? 'chip-on' : ''}" onclick="App.apFilterCat('')">All types</button>
+            ${(categories || SHOP_CATS).map((c) => `<button class="chip ${cat === c ? 'chip-on' : ''}" onclick="App.apFilterCat('${c}')">${icon(SHOP_ICON[c] || 'package')} ${esc(SHOP_LABEL[c] || c)}</button>`).join('')}
+          </div>
+        </div>
+        <p class="muted" style="margin:0 0 8px">${products.length} product${products.length === 1 ? '' : 's'}</p>
+        <div class="panel">
+        ${products.length ? products.map((p) => `<div class="row">
+          <div style="display:flex;gap:10px;align-items:center;min-width:0;cursor:pointer" onclick="App.openProduct(${p.id})">
+            <div class="shop-thumb">${p.image ? `<img src="${esc(p.image)}"/>` : icon(SHOP_ICON[p.category] || 'package')}</div>
+            <div style="min-width:0">
+              <strong>${esc(p.title)}</strong> ${p.status === 'sold' ? '<span class="badge down">Sold</span>' : '<span class="badge up">Available</span>'}<br>
+              <span class="muted">Rs ${money(p.price)}/${esc(p.unit || '')} · ${esc(SHOP_LABEL[p.category] || p.category)}${p.sold_count ? ' · ' + p.sold_count + ' sold' : ''}</span><br>
+              <span class="muted" style="font-size:.72rem">${icon('user-round')} ${esc(p.seller_name)} · ${icon('map-pin')} ${esc(p.location || '—')}</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            ${p.status === 'available'
+              ? `<button class="btn btn-sm btn-ghost" onclick="App.apSetStatus(${p.id},'sold')">Mark sold</button>`
+              : `<button class="btn btn-sm btn-ghost" onclick="App.apSetStatus(${p.id},'available')">Relist</button>`}
+            <button class="btn btn-sm" style="background:var(--danger);padding:8px 10px" onclick="App.deleteProduct(${p.id}, 'adminProducts')">${icon('trash-2')}</button>
+          </div></div>`).join('') : '<p class="muted" style="text-align:center;padding:20px">No products match.</p>'}
+        </div>`;
+      const qi = $('ap-q'); if (qi) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
+    },
+    apSearch() { ctx.apQ = ($('ap-q') || {}).value || ''; screens.adminProducts(); },
+    apFilterCat(c) { ctx.apCat = c || null; screens.adminProducts(); },
+    apFilterStatus(s) { ctx.apStatus = s || null; screens.adminProducts(); },
+    async apSetStatus(id, status) {
+      try { await api('/products/' + id, { method: 'PATCH', body: { status } }); toast(status === 'sold' ? 'Marked sold' : 'Relisted'); go('adminProducts'); }
+      catch (e) { toast(e.message); }
     },
 
     /* Admin: verify experts */
@@ -1958,6 +2022,10 @@ const App = (() => {
     markSold: (...a) => screens.markSold(...a),
     relist: (...a) => screens.relist(...a),
     deleteProduct: (...a) => screens.deleteProduct(...a),
+    apSearch: (...a) => screens.apSearch(...a),
+    apFilterCat: (...a) => screens.apFilterCat(...a),
+    apFilterStatus: (...a) => screens.apFilterStatus(...a),
+    apSetStatus: (...a) => screens.apSetStatus(...a),
     setOrder: (...a) => screens.setOrder(...a),
     selectSalesMonth: (...a) => screens.selectSalesMonth(...a),
     showSale: (...a) => screens.showSale(...a),

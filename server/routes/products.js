@@ -17,7 +17,7 @@
  */
 const express = require('express');
 const { get, all, run } = require('../db');
-const { authRequired } = require('../middleware/auth');
+const { authRequired, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -65,6 +65,24 @@ router.get('/', authRequired, async (req, res) => {
 router.get('/mine', authRequired, async (req, res) => {
   const rows = await all(`SELECT * FROM products WHERE seller_id = ? ORDER BY created_at DESC`, [req.user.id]);
   res.json({ products: await withSellerList(rows) });
+});
+
+/** GET /api/products/admin/all?category=&q=&status= -> every listing (admin only) */
+router.get('/admin/all', authRequired, requireRole('super_admin'), async (req, res) => {
+  const { category, q, status } = req.query;
+  const where = [], params = [];
+  if (category && CATEGORIES.includes(category)) { where.push('category = ?'); params.push(category); }
+  if (status === 'available' || status === 'sold') { where.push('status = ?'); params.push(status); }
+  if (q) { where.push('(title LIKE ? OR description LIKE ? OR location LIKE ?)'); const like = `%${q}%`; params.push(like, like, like); }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = await all(`SELECT * FROM products ${clause} ORDER BY created_at DESC`, params);
+  const products = await withSellerList(rows);
+  const totals = {
+    total: rows.length,
+    available: rows.filter((r) => r.status === 'available').length,
+    sold: rows.filter((r) => r.status === 'sold').length,
+  };
+  res.json({ products, categories: CATEGORIES, totals });
 });
 
 /** GET /api/products/orders/all -> { placed, received } for the current user */
