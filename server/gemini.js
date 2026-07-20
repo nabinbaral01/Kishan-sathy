@@ -120,13 +120,21 @@ async function diagnoseCrop({ cropName = '', symptom = '', image = '' }) {
 }
 
 /**
- * Plain-text chat reply. `messages` = [{ role:'farmer'|'expert', text }].
- * Returns a string. Throws on failure.
+ * Plain-text chat reply. `messages` = [{ role:'farmer'|'expert', text, image? }].
+ * A message may carry an `image` data-URL (farmer photos) which is sent to
+ * Gemini vision alongside the text. Returns a string. Throws on failure.
  */
 async function chat(messages = []) {
   const contents = messages
-    .filter((m) => m.text)
-    .map((m) => ({ role: m.role === 'farmer' ? 'user' : 'model', parts: [{ text: m.text }] }));
+    .filter((m) => m.text || m.image)
+    .map((m) => {
+      const parts = [];
+      if (m.text) parts.push({ text: m.text });
+      const img = parseDataUrl(m.image);
+      if (img) parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } });
+      return { role: m.role === 'farmer' ? 'user' : 'model', parts };
+    })
+    .filter((c) => c.parts.length);
 
   const data = await call({
     systemInstruction: {

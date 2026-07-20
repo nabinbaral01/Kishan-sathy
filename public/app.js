@@ -543,11 +543,14 @@ const App = (() => {
             ${msgs.length ? `<button class="btn btn-sm btn-ghost" onclick="App.clearAiChat()">Clear</button>` : ''}</div>
           <p class="muted">Ask anything about crops, pests, fertilizer, soil or weather.</p>
           <div class="chat-box" id="ai-box">
-            ${msgs.length ? msgs.map((m) => `<div class="msg ${m.role === 'farmer' ? 'farmer' : 'expert'}">${esc(m.text)}</div>`).join('') : ''}
+            ${msgs.length ? msgs.map((m) => `<div class="msg ${m.role === 'farmer' ? 'farmer' : 'expert'}">${m.image ? `<img src="${esc(m.image)}" style="max-width:180px;border-radius:8px;display:block;${m.text ? 'margin-bottom:6px' : ''}"/>` : ''}${esc(m.text || '')}</div>`).join('') : ''}
             ${ctx.aiThinking ? `<div class="msg expert"><em>typing…</em></div>` : ''}
             ${!msgs.length ? `<div class="ai-suggest">${suggestions.map((s) => `<button class="chip" onclick="App.askAi('${esc(s).replace(/'/g, '&#39;')}')">${esc(s)}</button>`).join('')}</div>` : ''}
           </div>
-          <div style="display:flex;gap:8px;margin-top:10px">
+          <div id="ai-preview" style="margin-top:8px">${ctx.aiImg ? `<div style="position:relative;display:inline-block"><img src="${ctx.aiImg}" style="max-width:120px;border-radius:8px"/><button class="btn btn-sm" style="position:absolute;top:2px;right:2px;background:var(--danger);padding:2px 7px;width:auto" onclick="App.clearAiImg()">✕</button></div>` : ''}</div>
+          <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+            <label class="btn btn-sm btn-ghost" style="margin:0;padding:10px;flex:0 0 auto" title="Add a photo">${icon('image')}
+              <input id="ai-image" type="file" accept="image/*" class="hidden" onchange="App.previewAiImg(this)" ${ctx.aiThinking ? 'disabled' : ''}/></label>
             <input id="ai-text" placeholder="Type your question…" style="margin:0" onkeydown="if(event.key==='Enter')App.sendAi()" ${ctx.aiThinking ? 'disabled' : ''}/>
             <button class="btn btn-sm" onclick="App.sendAi()" ${ctx.aiThinking ? 'disabled' : ''}>${icon('send')}</button>
           </div>
@@ -556,16 +559,29 @@ const App = (() => {
       const input = $('ai-text'); if (input && !ctx.aiThinking) input.focus();
     },
     askAi(text) { const i = $('ai-text'); if (i) i.value = text; screens.sendAi(); },
+    async previewAiImg(input) {
+      const f = input.files && input.files[0];
+      if (!f) return;
+      ctx.aiImg = await compressImage(f, { maxDim: 1280, quality: 0.7 });
+      screens.aiChat();
+    },
+    clearAiImg() { ctx.aiImg = null; screens.aiChat(); },
     async sendAi() {
       const input = $('ai-text');
       const text = input ? input.value.trim() : '';
-      if (!text || ctx.aiThinking) return;
+      const image = ctx.aiImg || null;
+      if ((!text && !image) || ctx.aiThinking) return;
       ctx.aiMessages = ctx.aiMessages || [];
-      ctx.aiMessages.push({ role: 'farmer', text });
+      ctx.aiMessages.push({ role: 'farmer', text, image });
+      ctx.aiImg = null;
       ctx.aiThinking = true;
       screens.aiChat();
       try {
-        const { reply } = await api('/chat/ai', { method: 'POST', body: { messages: ctx.aiMessages.slice(-12) } });
+        // Only send the image on the newest message to keep the request small
+        // (older photos would re-upload the full base64 every turn).
+        const recent = ctx.aiMessages.slice(-12);
+        const payload = recent.map((m, i) => ({ role: m.role, text: m.text, image: i === recent.length - 1 ? m.image : undefined }));
+        const { reply } = await api('/chat/ai', { method: 'POST', body: { messages: payload } });
         ctx.aiMessages.push({ role: 'ai', text: reply });
       } catch (e) {
         ctx.aiMessages.push({ role: 'ai', text: e.message || 'Sorry, I am busy right now. Please try again.' });
@@ -574,7 +590,7 @@ const App = (() => {
         screens.aiChat();
       }
     },
-    clearAiChat() { ctx.aiMessages = []; screens.aiChat(); },
+    clearAiChat() { ctx.aiMessages = []; ctx.aiImg = null; screens.aiChat(); },
 
     /* Farm update / news (uses general + scheme notifications) */
     async news() {
@@ -2401,6 +2417,8 @@ const App = (() => {
     openUserProfile: (...a) => screens.openUserProfile(...a),
     askAi: (...a) => screens.askAi(...a),
     sendAi: (...a) => screens.sendAi(...a),
+    previewAiImg: (...a) => screens.previewAiImg(...a),
+    clearAiImg: (...a) => screens.clearAiImg(...a),
     clearAiChat: (...a) => screens.clearAiChat(...a),
     filterFarmersByWard: (...a) => screens.filterFarmersByWard(...a),
     searchShop: (...a) => screens.searchShop(...a),

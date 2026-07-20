@@ -23,7 +23,7 @@ router.post('/ai', authRequired, async (req, res) => {
     return res.json({ reply: "The AI assistant isn't set up yet. Meanwhile, you can ask a human expert from the Expert tab." });
   }
   try {
-    const reply = await gemini.chat(history.map((m) => ({ role: m.role === 'farmer' ? 'farmer' : 'expert', text: m.text })));
+    const reply = await gemini.chat(history.map((m) => ({ role: m.role === 'farmer' ? 'farmer' : 'expert', text: m.text, image: m.image })));
     res.json({ reply: reply || 'Sorry, I could not generate a reply. Please try again.' });
   } catch (e) {
     console.warn('AI chat failed:', e.message);
