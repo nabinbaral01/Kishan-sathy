@@ -327,6 +327,22 @@ CREATE INDEX IF NOT EXISTS idx_products_status ON products(status);
 CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller_id);
 CREATE INDEX IF NOT EXISTS idx_orders_buyer    ON orders(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_seller   ON orders(seller_id);
+
+CREATE TABLE IF NOT EXISTS subsidies (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  farmer_id    INTEGER NOT NULL,
+  type         TEXT NOT NULL,                     -- seed|fertilizer|equipment|polyhouse|irrigation|livestock|training|other
+  title        TEXT NOT NULL,                     -- short description of what is requested
+  details      TEXT,                              -- farmer's note
+  amount       REAL,                              -- estimated amount (Rs), optional
+  status       TEXT NOT NULL DEFAULT 'pending',   -- pending|approved|rejected|distributed
+  admin_note   TEXT,                              -- municipality's remark on the decision
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  decided_at   TEXT,
+  FOREIGN KEY (farmer_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subsidies_farmer ON subsidies(farmer_id);
+CREATE INDEX IF NOT EXISTS idx_subsidies_status ON subsidies(status);
 `;
 
 /** Add a column if the table doesn't already have it (lightweight migration). */

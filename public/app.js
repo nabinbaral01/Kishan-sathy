@@ -238,6 +238,7 @@ const App = (() => {
           <button class="card" onclick="App.go('chat')"><span class="icon">${icon('messages-square')}</span><h3>Contact Expert</h3><p>Get solutions</p></button>
           <button class="card" onclick="App.go('aiChat')"><span class="icon">${icon('sparkles')}</span><h3>Chat with AI</h3><p>Instant farming help</p></button>
           <button class="card" onclick="App.go('shop',{shopCat:null,shopQ:''})"><span class="icon">${icon('store')}</span><h3>Bazar</h3><p>Buy & sell local products</p></button>
+          <button class="card" onclick="App.go('subsidies')"><span class="icon">${icon('hand-coins')}</span><h3>Subsidy</h3><p>Apply for अनुदान support</p></button>
         </div>
         <div class="panel"><div class="section-head"><h3>${icon('stethoscope')} AI Disease Detection</h3></div>
           <p class="muted">Photograph a plant and get a diagnosis.</p>
@@ -319,6 +320,57 @@ const App = (() => {
     async submitUpdate(cropId) {
       const details = readForm(['name', 'plant_count', 'growth_stage', 'fertilizer_used', 'watering_schedule', 'disease_history', 'growth_status', 'harvest_date', 'notes']);
       try { await api('/updates', { method: 'POST', body: { crop_id: cropId, details } }); toast('Updated & history saved'); go(user.role === 'farmer' ? 'crops' : 'home'); }
+      catch (e) { toast(e.message); }
+    },
+
+    /* Subsidy / अनुदान — farmer views own applications and applies. */
+    async subsidies() {
+      const { subsidies } = await api('/subsidies');
+      $('screen').innerHTML = `<button class="back" onclick="App.go('home')">← Back</button>
+        <div class="panel"><div class="section-head"><h2>${icon('hand-coins')} Subsidy / अनुदान</h2>
+          <button class="btn btn-sm" onclick="App.go('applySubsidy')">${icon('plus')} Apply</button></div>
+          <p class="muted">Apply for government support — seed, fertilizer, equipment and more. The nagarpalika reviews each request.</p>
+        </div>
+        ${subsidies.length ? subsidies.map((s) => subCard(s, false)).join('') : '<p class="muted" style="text-align:center;padding:16px">No applications yet. Tap Apply to request support.</p>'}`;
+    },
+    async applySubsidy() {
+      $('screen').innerHTML = `<button class="back" onclick="App.go('subsidies')">← Back</button>
+        <div class="panel"><h2>${icon('hand-coins')} Apply for Subsidy</h2>
+          <label>Type of support</label>
+          <select id="f-type">${SUBSIDY_TYPES.map((t) => `<option value="${t}">${SUB_EMOJI[t]} ${SUB_LABEL[t]}</option>`).join('')}</select>
+          <input id="f-title" placeholder="What do you need? (e.g. 5 kg tomato seeds)"/>
+          <textarea id="f-details" placeholder="More details (optional)"></textarea>
+          <input id="f-amount" type="number" placeholder="Estimated amount Rs (optional)"/>
+          <button class="btn" onclick="App.submitSubsidy()">Submit application</button>
+        </div>`;
+    },
+    async submitSubsidy() {
+      const b = readForm(['type', 'title', 'details', 'amount']);
+      if (!b.title) return toast('Please describe what you need');
+      try { await api('/subsidies', { method: 'POST', body: b }); toast('Application submitted'); go('subsidies'); }
+      catch (e) { toast(e.message); }
+    },
+    async deleteSubsidy(id) {
+      try { await api('/subsidies/' + id, { method: 'DELETE' }); toast('Request cancelled'); go(user.role === 'super_admin' ? 'adminSubsidies' : 'subsidies'); }
+      catch (e) { toast(e.message); }
+    },
+
+    /* Admin: review & decide subsidy applications. */
+    async adminSubsidies() {
+      const status = ctx.subStatus || 'pending';
+      const q = status === 'all' ? '' : '?status=' + status;
+      const { subsidies } = await api('/subsidies' + q);
+      const chips = ['pending', 'approved', 'distributed', 'rejected', 'all'];
+      $('screen').innerHTML = `<button class="back" onclick="App.go('admin')">← Dashboard</button>
+        <div class="panel"><h2>${icon('hand-coins')} Subsidy Applications</h2>
+          <p class="muted">Review farmers' अनुदान requests, approve or reject, and mark distributed.</p>
+          <div class="chips-row">${chips.map((c) => `<button class="chip ${status === c ? 'chip-on' : ''}" onclick="App.setSubStatus('${c}')">${c === 'all' ? 'All' : (SUB_STATUS[c] ? SUB_STATUS[c][0] : c)}</button>`).join('')}</div>
+        </div>
+        ${subsidies.length ? subsidies.map((s) => subCard(s, true)).join('') : '<p class="muted" style="text-align:center;padding:16px">No applications here.</p>'}`;
+    },
+    setSubStatus(s) { ctx.subStatus = s; screens.adminSubsidies(); },
+    async decideSubsidy(id, status) {
+      try { await api('/subsidies/' + id, { method: 'PATCH', body: { status } }); toast('Marked ' + status); go('adminSubsidies'); }
       catch (e) { toast(e.message); }
     },
 
@@ -863,6 +915,7 @@ const App = (() => {
     async openProduct(id) {
       const { product: p } = await api('/products/' + id);
       const mine = p.seller_id === user.id;
+      const admin = user.role === 'super_admin';
       $('screen').innerHTML = `
         <button class="back" onclick="App.go('shop')">← Back to Bazar</button>
         <div class="panel">
@@ -888,7 +941,11 @@ const App = (() => {
             </div>
             <input id="ord-msg" placeholder="Message to seller (optional)"/>
             <button class="btn btn-sm" onclick="App.placeOrder(${p.id})">${icon('shopping-cart')} Place order</button>
-          </div>` : `<div class="panel"><p class="muted">This product has been sold.</p></div>`}`;
+          </div>` : `<div class="panel"><p class="muted">This product has been sold.</p></div>`}
+        ${admin && !mine ? `<div class="panel"><h3>${icon('shield')} Admin</h3>
+          <p class="muted">Remove this listing from the Bazar (seller: ${esc(p.seller_name)}).</p>
+          <button class="btn btn-sm" style="background:var(--danger)" onclick="App.deleteProduct(${p.id}, 'shop')">${icon('trash-2')} Delete this product</button>
+        </div>` : ''}`;
     },
     orderTotal(price) { const q = Number(($('ord-qty') || {}).value) || 0; const el = $('ord-total'); if (el) el.textContent = 'Rs ' + money(Math.round(q * price)); },
     async placeOrder(id) {
@@ -1000,9 +1057,9 @@ const App = (() => {
     },
     async markSold(id) { try { await api('/products/' + id, { method: 'PATCH', body: { status: 'sold' } }); toast('Marked sold'); go('myShop'); } catch (e) { toast(e.message); } },
     async relist(id) { try { await api('/products/' + id, { method: 'PATCH', body: { status: 'available' } }); toast('Relisted'); go('myShop'); } catch (e) { toast(e.message); } },
-    async deleteProduct(id) {
+    async deleteProduct(id, back = 'myShop') {
       if (!(await confirmDialog('Delete this listing?'))) return;
-      try { await api('/products/' + id, { method: 'DELETE' }); toast('Deleted'); go('myShop'); } catch (e) { toast(e.message); }
+      try { await api('/products/' + id, { method: 'DELETE' }); toast('Deleted'); go(back); } catch (e) { toast(e.message); }
     },
     async setOrder(id, status) { try { await api('/products/orders/' + id, { method: 'PATCH', body: { status } }); toast('Order ' + status); go('myShop'); } catch (e) { toast(e.message); } },
 
@@ -1277,9 +1334,10 @@ const App = (() => {
     async admin() {
       // reset drill-down context so top-level cards start fresh
       ctx.farmerId = null; ctx.farmerName = null; ctx.farmId = null;
-      const [s, ob] = await Promise.all([api('/analytics/summary'), api('/analytics/outbreaks')]);
+      const [s, ob, subSum] = await Promise.all([api('/analytics/summary'), api('/analytics/outbreaks'), api('/subsidies/summary')]);
       const t = s.totals;
       const outbreaks = ob.outbreaks || [];
+      const pendingSubs = subSum.pending || 0;
       $('screen').innerHTML = `
         ${outbreaks.length ? `<button class="panel" style="width:100%;text-align:left;cursor:pointer;border:2px solid #c62828;background:rgba(198,40,40,.08)" onclick="App.go('adminOutbreaks')">
           <strong style="color:#c62828">${icon('triangle-alert')} ${outbreaks.length} disease outbreak${outbreaks.length > 1 ? 's' : ''} detected</strong>
@@ -1294,6 +1352,7 @@ const App = (() => {
         </div>
         <button class="btn" style="width:100%;margin-top:10px;background:#00695c;color:#fff" onclick="App.go('adminWards')">${icon('map')} Open Ward Overview</button>
         <button class="btn" style="width:100%;margin-top:8px;background:#c62828;color:#fff" onclick="App.go('adminOutbreaks')">${icon('triangle-alert')} Disease Outbreak Alerts</button>
+        <button class="btn" style="width:100%;margin-top:8px;background:#6a1b9a;color:#fff" onclick="App.go('adminSubsidies',{subStatus:'pending'})">${icon('hand-coins')} Subsidy Applications${pendingSubs ? ' (' + pendingSubs + ' pending)' : ''}</button>
         </div>
         <div class="panel"><h3>Crops by Category</h3>${s.crops_by_category.map((r) => `<div class="row"><span>${esc(r.category)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
         <div class="panel"><h3>Crop Health</h3>${s.crop_health.map((r) => `<div class="row"><span>${esc(r.growth_status)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
@@ -1495,6 +1554,39 @@ const App = (() => {
     wages: 'users', fertilizer: 'flask-conical', seed: 'wheat', plants: 'sprout',
     pesticide: 'spray-can', equipment: 'wrench', transport: 'truck', other: 'circle-dollar-sign',
   };
+
+  // Subsidy / अनुदान types.
+  const SUBSIDY_TYPES = ['seed', 'fertilizer', 'equipment', 'polyhouse', 'irrigation', 'livestock', 'training', 'other'];
+  const SUB_LABEL = {
+    seed: 'Seed', fertilizer: 'Fertilizer', equipment: 'Equipment', polyhouse: 'Polyhouse',
+    irrigation: 'Irrigation', livestock: 'Livestock', training: 'Training', other: 'Other',
+  };
+  const SUB_EMOJI = {
+    seed: '🌱', fertilizer: '🧪', equipment: '🛠️', polyhouse: '🏠',
+    irrigation: '💧', livestock: '🐄', training: '🎓', other: '📦',
+  };
+  const SUB_STATUS = {
+    pending: ['Pending', '#f9a825'], approved: ['Approved', '#2e7d32'],
+    rejected: ['Rejected', '#c62828'], distributed: ['Distributed', '#00695c'],
+  };
+  function subStatusBadge(s) {
+    const [label, color] = SUB_STATUS[s] || [s, '#777'];
+    return `<span class="badge" style="background:${color};color:#fff">${label}</span>`;
+  }
+  function subCard(s, admin) {
+    return `<div class="panel" style="margin-bottom:8px">
+      <div class="section-head"><h3 style="margin:0">${SUB_EMOJI[s.type] || '📦'} ${esc(s.title)}</h3>${subStatusBadge(s.status)}</div>
+      <div class="muted" style="font-size:.78rem">${esc(SUB_LABEL[s.type] || s.type)}${s.amount ? ' · Rs ' + money(s.amount) : ''}${admin ? ' · 👨‍🌾 ' + esc(s.farmer_name || '') + (s.ward ? ' (Ward ' + s.ward + ')' : '') : ''}</div>
+      ${s.details ? `<p style="margin:6px 0 0;font-size:.85rem">${esc(s.details)}</p>` : ''}
+      ${s.admin_note ? `<p class="muted" style="margin:4px 0 0;font-size:.78rem">📝 ${esc(s.admin_note)}</p>` : ''}
+      ${admin && s.status === 'pending' ? `<div class="row" style="gap:6px;margin-top:8px">
+        <button class="btn btn-sm" style="background:#2e7d32;color:#fff" onclick="App.decideSubsidy(${s.id},'approved')">Approve</button>
+        <button class="btn btn-sm" style="background:#c62828;color:#fff" onclick="App.decideSubsidy(${s.id},'rejected')">Reject</button>
+      </div>` : ''}
+      ${admin && s.status === 'approved' ? `<button class="btn btn-sm" style="margin-top:8px;background:#00695c;color:#fff" onclick="App.decideSubsidy(${s.id},'distributed')">Mark distributed</button>` : ''}
+      ${!admin && s.status === 'pending' ? `<button class="btn btn-sm btn-ghost" style="margin-top:8px" onclick="App.deleteSubsidy(${s.id})">Cancel request</button>` : ''}
+    </div>`;
+  }
   // Update the bulk-delete button + select-all box without a full re-render
   // (so a half-filled add-expense form isn't wiped when ticking rows).
   function updateExpSelUI() {

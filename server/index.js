@@ -44,6 +44,7 @@ app.use('/api/market', require('./routes/market'));
 app.use('/api/sales', require('./routes/sales'));
 app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/products', require('./routes/products'));
+app.use('/api/subsidies', require('./routes/subsidies'));
 app.use('/api/weather', require('./routes/weather'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/analytics', require('./routes/analytics'));
