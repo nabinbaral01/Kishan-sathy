@@ -1471,6 +1471,11 @@ const App = (() => {
       if (q) params.set('q', q);
       if (st) params.set('status', st);
       const { products, categories, totals } = await api('/products/admin/all?' + params.toString());
+      ctx.apSel = ctx.apSel || {};
+      ctx.apShownIds = products.map((p) => p.id);
+      const sel = ctx.apSel;
+      const selCount = products.filter((p) => sel[p.id]).length;
+      const allChecked = products.length > 0 && selCount === products.length;
       $('screen').innerHTML = `
         <button class="back" onclick="App.go('admin')">← Dashboard</button>
         <div class="panel">
@@ -1496,15 +1501,25 @@ const App = (() => {
             ${(categories || SHOP_CATS).map((c) => `<button class="chip ${cat === c ? 'chip-on' : ''}" onclick="App.apFilterCat('${c}')">${icon(SHOP_ICON[c] || 'package')} ${esc(SHOP_LABEL[c] || c)}</button>`).join('')}
           </div>
         </div>
+        ${products.length ? `<div class="toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 8px">
+          <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
+            <input type="checkbox" style="width:auto" ${allChecked ? 'checked' : ''} onclick="App.apSelectAll(this.checked)"/>Select all</label>
+          <span class="muted">${selCount} selected</span>
+          ${selCount ? `<button class="btn btn-sm" style="width:auto;background:var(--danger)" onclick="App.apDeleteSelected()">${icon('trash-2')} Delete selected (${selCount})</button>
+          <button class="btn btn-sm btn-ghost" onclick="App.apClearSel()">Clear</button>` : ''}
+        </div>` : ''}
         <p class="muted" style="margin:0 0 8px">${products.length} product${products.length === 1 ? '' : 's'}</p>
         <div class="panel">
         ${products.length ? products.map((p) => `<div class="row">
-          <div style="display:flex;gap:10px;align-items:center;min-width:0;cursor:pointer" onclick="App.openProduct(${p.id})">
-            <div class="shop-thumb">${p.image ? `<img src="${esc(p.image)}"/>` : icon(SHOP_ICON[p.category] || 'package')}</div>
-            <div style="min-width:0">
-              <strong>${esc(p.title)}</strong> ${p.status === 'sold' ? '<span class="badge down">Sold</span>' : '<span class="badge up">Available</span>'}<br>
-              <span class="muted">Rs ${money(p.price)}/${esc(p.unit || '')} · ${esc(SHOP_LABEL[p.category] || p.category)}${p.sold_count ? ' · ' + p.sold_count + ' sold' : ''}</span><br>
-              <span class="muted" style="font-size:.72rem">${icon('user-round')} ${esc(p.seller_name)} · ${icon('map-pin')} ${esc(p.location || '—')}</span>
+          <div style="display:flex;gap:10px;align-items:center;min-width:0">
+            <input type="checkbox" style="width:auto;flex-shrink:0" ${sel[p.id] ? 'checked' : ''} onclick="App.apToggle(${p.id})"/>
+            <div style="display:flex;gap:10px;align-items:center;min-width:0;cursor:pointer" onclick="App.openProduct(${p.id})">
+              <div class="shop-thumb">${p.image ? `<img src="${esc(p.image)}"/>` : icon(SHOP_ICON[p.category] || 'package')}</div>
+              <div style="min-width:0">
+                <strong>${esc(p.title)}</strong> ${p.status === 'sold' ? '<span class="badge down">Sold</span>' : '<span class="badge up">Available</span>'}<br>
+                <span class="muted">Rs ${money(p.price)}/${esc(p.unit || '')} · ${esc(SHOP_LABEL[p.category] || p.category)}${p.sold_count ? ' · ' + p.sold_count + ' sold' : ''}</span><br>
+                <span class="muted" style="font-size:.72rem">${icon('user-round')} ${esc(p.seller_name)} · ${icon('map-pin')} ${esc(p.location || '—')}</span>
+              </div>
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
@@ -1522,6 +1537,24 @@ const App = (() => {
     async apSetStatus(id, status) {
       try { await api('/products/' + id, { method: 'PATCH', body: { status } }); toast(status === 'sold' ? 'Marked sold' : 'Relisted'); go('adminProducts'); }
       catch (e) { toast(e.message); }
+    },
+    apToggle(id) { ctx.apSel = ctx.apSel || {}; if (ctx.apSel[id]) delete ctx.apSel[id]; else ctx.apSel[id] = true; screens.adminProducts(); },
+    apSelectAll(checked) {
+      ctx.apSel = ctx.apSel || {};
+      (ctx.apShownIds || []).forEach((id) => { if (checked) ctx.apSel[id] = true; else delete ctx.apSel[id]; });
+      screens.adminProducts();
+    },
+    apClearSel() { ctx.apSel = {}; screens.adminProducts(); },
+    async apDeleteSelected() {
+      const ids = Object.keys(ctx.apSel || {}).filter((k) => ctx.apSel[k]).map(Number);
+      if (!ids.length) return;
+      if (!(await confirmDialog(`Delete ${ids.length} product(s)? This permanently removes ${ids.length === 1 ? 'this listing' : 'these listings'} from the Bazar.`, { title: 'Delete products' }))) return;
+      try {
+        for (const id of ids) await api('/products/' + id, { method: 'DELETE' });
+        ctx.apSel = {};
+        toast(`${ids.length} product(s) deleted`);
+        go('adminProducts');
+      } catch (e) { toast(e.message); }
     },
 
     /* Admin: verify experts */
@@ -2026,6 +2059,10 @@ const App = (() => {
     apFilterCat: (...a) => screens.apFilterCat(...a),
     apFilterStatus: (...a) => screens.apFilterStatus(...a),
     apSetStatus: (...a) => screens.apSetStatus(...a),
+    apToggle: (...a) => screens.apToggle(...a),
+    apSelectAll: (...a) => screens.apSelectAll(...a),
+    apClearSel: (...a) => screens.apClearSel(...a),
+    apDeleteSelected: (...a) => screens.apDeleteSelected(...a),
     setOrder: (...a) => screens.setOrder(...a),
     selectSalesMonth: (...a) => screens.selectSalesMonth(...a),
     showSale: (...a) => screens.showSale(...a),
