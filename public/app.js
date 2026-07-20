@@ -383,26 +383,41 @@ const App = (() => {
           <textarea id="post-text" placeholder="What's on your mind, ${esc((user.name || '').split(' ')[0])}?" style="min-height:70px"></textarea>
           <div id="post-preview" style="margin:4px 0"></div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <label class="btn btn-sm btn-ghost" style="display:inline-block;margin:0">${icon('image')} Photo
-              <input id="post-image" type="file" accept="image/*" class="hidden" onchange="App.previewPostImg(this)"/></label>
+            <label class="btn btn-sm btn-ghost" style="display:inline-block;margin:0">${icon('image')} Add photos
+              <input id="post-image" type="file" accept="image/*" multiple class="hidden" onchange="App.previewPostImg(this)"/></label>
             <button class="btn btn-sm" style="margin:0" onclick="App.submitPost()">${icon('send')} Post</button>
           </div>
         </div>
         ${posts.length ? posts.map((p) => feedCard(p, admin)).join('') : '<p class="muted" style="text-align:center;padding:20px">No posts yet. Be the first to share something!</p>'}`;
+      renderPostPreview(); // restore any photos picked before this re-render
     },
     async previewPostImg(input) {
-      const f = input.files && input.files[0];
-      if (!f) return;
-      ctx.postImg = await compressImage(f, { maxDim: 1280, quality: 0.72 });
-      const box = $('post-preview');
-      if (box) box.innerHTML = `<img src="${ctx.postImg}" style="max-width:100%;border-radius:10px"/>`;
+      const files = Array.from(input.files || []);
+      if (!files.length) return;
+      ctx.postImgs = ctx.postImgs || [];
+      const room = MAX_POST_IMAGES - ctx.postImgs.length;
+      if (room <= 0) { input.value = ''; return toast(`You can add up to ${MAX_POST_IMAGES} photos`); }
+      if (files.length > room) toast(`Only ${room} more photo${room > 1 ? 's' : ''} can be added`);
+      for (const f of files.slice(0, room)) {
+        ctx.postImgs.push(await compressImage(f, { maxDim: 1280, quality: 0.72 }));
+      }
+      input.value = ''; // let the same file be picked again after removing it
+      renderPostPreview();
+    },
+    removePostImg(i) {
+      (ctx.postImgs || []).splice(i, 1);
+      renderPostPreview();
     },
     async submitPost() {
       const content = ($('post-text') || {}).value || '';
-      if (!content.trim() && !ctx.postImg) return toast('Write something or add a photo');
+      const images = ctx.postImgs || [];
+      if (!content.trim() && !images.length) return toast('Write something or add a photo');
+      // Guard the host's request-size cap so a big multi-photo post fails clearly.
+      const bytes = images.reduce((s, im) => s + im.length, 0);
+      if (bytes > 3.8 * 1024 * 1024) return toast('Those photos are too large together — remove one and try again');
       try {
-        await api('/feed', { method: 'POST', body: { content, image: ctx.postImg || undefined } });
-        ctx.postImg = null;
+        await api('/feed', { method: 'POST', body: { content, images } });
+        ctx.postImgs = [];
         toast('Posted');
         go('feed');
       } catch (e) { toast(e.message); }
@@ -1999,6 +2014,22 @@ const App = (() => {
       ${!admin && s.status === 'pending' ? `<button class="btn btn-sm btn-ghost" style="margin-top:8px" onclick="App.deleteSubsidy(${s.id})">Cancel request</button>` : ''}
     </div>`;
   }
+  const MAX_POST_IMAGES = 6;
+
+  // Rebuild just the composer's photo strip (never the whole screen, so text
+  // already typed into the box isn't wiped). Each thumb has a ✕ to drop it.
+  function renderPostPreview() {
+    const box = $('post-preview');
+    if (!box) return;
+    const imgs = ctx.postImgs || [];
+    box.innerHTML = imgs.length ? `
+      <div class="pv-grid">${imgs.map((src, i) => `
+        <div class="pv-item"><img src="${src}"/>
+          <button type="button" class="pv-x" title="Remove this photo" onclick="App.removePostImg(${i})">✕</button>
+        </div>`).join('')}</div>
+      <p class="muted" style="font-size:.72rem;margin:4px 0 0">${imgs.length} of ${MAX_POST_IMAGES} photos · tap ✕ to remove</p>` : '';
+  }
+
   // The display name + badge for a feed author. The municipality account posts
   // as "Nagarpalika" with an official blue tick (never its raw "Super Admin" name).
   function feedAuthor(role, name) {
@@ -2014,6 +2045,8 @@ const App = (() => {
   function feedCard(p, admin, full) {
     const mine = p.user_id === user.id;
     const canDelete = mine || admin;
+    // `images` is the current shape; `image` covers posts made before multi-photo.
+    const imgs = (p.images && p.images.length) ? p.images : (p.image ? [p.image] : []);
     const open = full ? '' : `onclick="App.go('post',{postId:${p.id}})" style="cursor:pointer"`;
     return `<div class="panel feed-card" style="margin-bottom:8px">
       <div style="display:flex;gap:10px;align-items:center">
@@ -2026,7 +2059,8 @@ const App = (() => {
       </div>
       <div ${open}>
         ${p.content ? `<p style="margin:8px 0 0;white-space:pre-wrap">${esc(p.content)}</p>` : ''}
-        ${p.image ? `<img src="${esc(p.image)}" style="width:100%;border-radius:12px;margin-top:8px"/>` : ''}
+        ${imgs.length ? `<div class="post-imgs ${imgs.length > 1 ? 'multi' : ''}" style="margin-top:8px">
+          ${imgs.map((src) => `<img src="${esc(src)}"/>`).join('')}</div>` : ''}
       </div>
       <div style="display:flex;gap:14px;align-items:center;margin-top:10px;border-top:1px solid #eef2ee;padding-top:8px">
         <button id="like-${p.id}" class="feed-act ${p.liked ? 'liked' : ''}" onclick="App.toggleLike(${p.id})">${icon('heart')} ${p.like_count}</button>
@@ -2417,6 +2451,7 @@ const App = (() => {
     setSubStatus: (...a) => screens.setSubStatus(...a),
     decideSubsidy: (...a) => screens.decideSubsidy(...a),
     previewPostImg: (...a) => screens.previewPostImg(...a),
+    removePostImg: (...a) => screens.removePostImg(...a),
     submitPost: (...a) => screens.submitPost(...a),
     toggleLike: (...a) => screens.toggleLike(...a),
     deletePost: (...a) => screens.deletePost(...a),

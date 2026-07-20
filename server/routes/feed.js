@@ -17,11 +17,22 @@ const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 
+const MAX_IMAGES = 6;
+
+/** A post's photos as an array (new `images` JSON, falling back to legacy `image`). */
+function imagesOf(p) {
+  if (p.images) {
+    try { const a = JSON.parse(p.images); if (Array.isArray(a)) return a.filter(Boolean); } catch { /* fall through */ }
+  }
+  return p.image ? [p.image] : [];
+}
+
 // Production skips global schema init, so create our tables on first use.
 let ready = null;
 function ensureTables() {
   if (!ready) {
-    ready = exec(`
+    ready = (async () => {
+      await exec(`
       CREATE TABLE IF NOT EXISTS posts (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id    INTEGER NOT NULL,
@@ -43,6 +54,12 @@ function ensureTables() {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
+      // Multi-photo support was added after launch — migrate existing tables.
+      const cols = await all(`PRAGMA table_info(posts)`);
+      if (!cols.some((c) => c.name === 'images')) {
+        await exec(`ALTER TABLE posts ADD COLUMN images TEXT`);
+      }
+    })();
   }
   return ready;
 }
@@ -60,6 +77,9 @@ async function decorate(rows, meId) {
     const liked = !!(await get(`SELECT 1 FROM post_likes WHERE post_id = ? AND user_id = ?`, [p.id, meId]));
     return {
       ...p,
+      // Send photos as one clean array; drop the raw column forms so the same
+      // base64 isn't shipped twice.
+      image: undefined, images: imagesOf(p),
       author_name: u ? u.name : 'Unknown', author_avatar: u ? u.avatar : null,
       author_ward: u ? u.ward : null, author_role: u ? u.role : null,
       like_count: likes, comment_count: comments, liked,
@@ -73,12 +93,18 @@ router.get('/', async (req, res) => {
   res.json({ posts: await decorate(rows, req.user.id) });
 });
 
-/** POST /api/feed  { content, image } */
+/** POST /api/feed  { content, images: [dataUrl], image (legacy single) } */
 router.post('/', async (req, res) => {
   const content = (req.body?.content || '').trim();
-  const image = req.body?.image || null;
-  if (!content && !image) return res.status(400).json({ error: 'Write something or add a photo' });
-  const info = await run(`INSERT INTO posts (user_id, content, image) VALUES (?,?,?)`, [req.user.id, content || null, image]);
+  let images = Array.isArray(req.body?.images) ? req.body.images.filter((s) => typeof s === 'string' && s) : [];
+  if (!images.length && req.body?.image) images = [req.body.image];
+  images = images.slice(0, MAX_IMAGES);
+  if (!content && !images.length) return res.status(400).json({ error: 'Write something or add a photo' });
+  const info = await run(
+    `INSERT INTO posts (user_id, content, image, images) VALUES (?,?,?,?)`,
+    // `image` keeps the first photo so any older client still renders something.
+    [req.user.id, content || null, images[0] || null, images.length ? JSON.stringify(images) : null]
+  );
   const [post] = await decorate([await get(`SELECT * FROM posts WHERE id = ?`, [info.lastInsertRowid])], req.user.id);
   res.status(201).json({ post });
 });
