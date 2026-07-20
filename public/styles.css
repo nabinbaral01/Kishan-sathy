@@ -53,6 +53,12 @@ input, select, textarea {
   width: 100%; padding: 12px; margin: 6px 0 12px; border: 1px solid #cdd6cd;
   border-radius: 10px; font-size: 1rem; background: #fff;
 }
+/* Data table (Nagarpalika records etc.) */
+.data-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.data-table th, .data-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eef2ee; white-space: nowrap; vertical-align: middle; }
+.data-table th { font-weight: 700; color: var(--green-dark); background: #f4f8f4; position: sticky; top: 0; }
+.data-table tr:hover td { background: #fafcfa; }
+
 /* Password field with a show/hide eye toggle */
 .pw-wrap { position: relative; margin: 6px 0 12px; }
 .pw-wrap input { margin: 0; padding-right: 46px; }

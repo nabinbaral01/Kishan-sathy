@@ -343,6 +343,23 @@ CREATE TABLE IF NOT EXISTS subsidies (
 );
 CREATE INDEX IF NOT EXISTS idx_subsidies_farmer ON subsidies(farmer_id);
 CREATE INDEX IF NOT EXISTS idx_subsidies_status ON subsidies(status);
+
+-- Nagarpalika subsidy-beneficiary registry (municipality record-keeping).
+CREATE TABLE IF NOT EXISTS beneficiaries (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  name              TEXT NOT NULL,
+  age               INTEGER,
+  ward              INTEGER,
+  phone             TEXT,
+  address           TEXT,
+  subsidy_type      TEXT,
+  amount            REAL,
+  given_date        TEXT,
+  status            TEXT NOT NULL DEFAULT 'approved',
+  remarks           TEXT,
+  source_subsidy_id INTEGER,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 /** Add a column if the table doesn't already have it (lightweight migration). */

@@ -1373,6 +1373,7 @@ const App = (() => {
         <button class="btn" style="width:100%;margin-top:8px;background:#c62828;color:#fff" onclick="App.go('adminOutbreaks')">${icon('triangle-alert')} Disease Outbreak Alerts</button>
         <button class="btn" style="width:100%;margin-top:8px;background:#6a1b9a;color:#fff" onclick="App.go('adminSubsidies',{subStatus:'pending'})">${icon('hand-coins')} Subsidy Applications${pendingSubs ? ' (' + pendingSubs + ' pending)' : ''}</button>
         <button class="btn" style="width:100%;margin-top:8px;background:#00838f;color:#fff" onclick="App.go('adminProducts',{apCat:null,apQ:'',apStatus:''})">${icon('store')} Manage Bazar Products</button>
+        <button class="btn" style="width:100%;margin-top:8px;background:#37474f;color:#fff" onclick="App.go('adminBeneficiaries',{benWard:'',benStatus:'',benQ:'',benEdit:null})">${icon('clipboard-list')} Nagarpalika Records</button>
         </div>
         <div class="panel"><h3>Crops by Category</h3>${s.crops_by_category.map((r) => `<div class="row"><span>${esc(r.category)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
         <div class="panel"><h3>Crop Health</h3>${s.crop_health.map((r) => `<div class="row"><span>${esc(r.growth_status)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
@@ -1573,6 +1574,168 @@ const App = (() => {
       } catch (e) { toast(e.message); }
     },
 
+    /* Nagarpalika (municipality) subsidy-beneficiary registry: record every person
+       who received a subsidy, add/edit rows, import from applications, export to Excel. */
+    async adminBeneficiaries() {
+      const ward = ctx.benWard || '';
+      const status = ctx.benStatus || '';
+      const q = ctx.benQ || '';
+      const params = new URLSearchParams();
+      if (ward) params.set('ward', ward);
+      if (status) params.set('status', status);
+      if (q) params.set('q', q);
+      const { beneficiaries, totals } = await api('/beneficiaries?' + params.toString());
+      ctx.benRows = beneficiaries; // kept for CSV export of the current view
+      const e = ctx.benEdit || {}; // record being edited, or {} when adding
+      const editing = !!(ctx.benEdit && ctx.benEdit.id);
+      const wardOpts = ['<option value="">Ward…</option>']
+        .concat(Array.from({ length: 11 }, (_, i) => i + 1).map((w) => `<option value="${w}" ${String(e.ward) === String(w) ? 'selected' : ''}>Ward ${w}</option>`)).join('');
+      const typeOpts = ['<option value="">Subsidy type…</option>']
+        .concat(Object.entries(BEN_TYPES).map(([k, l]) => `<option value="${k}" ${e.subsidy_type === k ? 'selected' : ''}>${l}</option>`)).join('');
+      const statusOpts = BEN_STATUS.map((s) => `<option value="${s}" ${(e.status || 'approved') === s ? 'selected' : ''}>${s}</option>`).join('');
+      const filterWardOpts = ['<option value="">All wards</option>']
+        .concat(Array.from({ length: 11 }, (_, i) => i + 1).map((w) => `<option value="${w}" ${String(ward) === String(w) ? 'selected' : ''}>Ward ${w}</option>`)).join('');
+
+      $('screen').innerHTML = `
+        <button class="back" onclick="App.go('admin')">← Dashboard</button>
+        <div class="panel">
+          <div class="section-head"><h2>${icon('clipboard-list')} Nagarpalika Records</h2></div>
+          <p class="muted">Municipality register of subsidy beneficiaries. Add people, edit records, import approved applications, and export to Excel.</p>
+          <div class="stat-row">
+            <div class="stat"><span class="stat-num">${totals.count}</span><span class="stat-lbl">Records</span></div>
+            <div class="stat"><span class="stat-num">Rs ${money(totals.amount)}</span><span class="stat-lbl">Total subsidy</span></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+            <button class="btn btn-sm btn-ghost" onclick="App.benImport()">${icon('download')} Import from applications</button>
+            <button class="btn btn-sm" style="background:#1b5e20" onclick="App.benExport()">${icon('file-spreadsheet')} Export to Excel (CSV)</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>${editing ? icon('pencil') + ' Edit record' : icon('user-plus') + ' Add a beneficiary'}</h3>
+          <input id="ben-name" placeholder="Full name *" value="${esc(e.name || '')}"/>
+          <div class="form-grid">
+            <input id="ben-age" type="number" min="0" placeholder="Age" value="${e.age != null ? e.age : ''}"/>
+            <select id="ben-ward">${wardOpts}</select>
+          </div>
+          <div class="form-grid">
+            <input id="ben-phone" placeholder="Phone" value="${esc(e.phone || '')}"/>
+            <input id="ben-address" placeholder="Address / Tole" value="${esc(e.address || '')}"/>
+          </div>
+          <div class="form-grid">
+            <select id="ben-type">${typeOpts}</select>
+            <input id="ben-amount" type="number" min="0" step="any" placeholder="Amount (Rs)" value="${e.amount != null ? e.amount : ''}"/>
+          </div>
+          <div class="form-grid">
+            <input id="ben-date" type="date" value="${esc(e.given_date || '')}"/>
+            <select id="ben-status">${statusOpts}</select>
+          </div>
+          <input id="ben-remarks" placeholder="Remarks (optional)" value="${esc(e.remarks || '')}"/>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-sm" onclick="App.benSave()">${editing ? 'Save changes' : 'Add record'}</button>
+            ${editing ? `<button class="btn btn-sm btn-ghost" onclick="App.benCancelEdit()">Cancel</button>` : ''}
+          </div>
+        </div>
+
+        <div class="panel">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="ben-q" placeholder="Search name, phone, address…" value="${esc(q)}" style="margin:0" onkeydown="if(event.key==='Enter')App.benSearch()"/>
+            <button class="btn btn-sm" onclick="App.benSearch()">${icon('search')}</button>
+          </div>
+          <div class="form-grid" style="margin-top:8px">
+            <select id="ben-fward" onchange="App.benFilterWard(this.value)">${filterWardOpts}</select>
+            <select id="ben-fstatus" onchange="App.benFilterStatus(this.value)">
+              <option value="">All status</option>
+              ${BEN_STATUS.map((s) => `<option value="${s}" ${status === s ? 'selected' : ''}>${s}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <p class="muted" style="margin:0 0 8px">${beneficiaries.length} record${beneficiaries.length === 1 ? '' : 's'}</p>
+        <div class="panel" style="overflow-x:auto">
+          ${beneficiaries.length ? `<table class="data-table">
+            <thead><tr>
+              <th>Name</th><th>Age</th><th>Ward</th><th>Phone</th><th>Address</th>
+              <th>Type</th><th>Amount</th><th>Date</th><th>Status</th><th>Remarks</th><th></th>
+            </tr></thead>
+            <tbody>
+            ${beneficiaries.map((b) => `<tr>
+              <td>${esc(b.name)}</td>
+              <td>${b.age != null ? b.age : '—'}</td>
+              <td>${b.ward != null ? b.ward : '—'}</td>
+              <td>${esc(b.phone || '—')}</td>
+              <td>${esc(b.address || '—')}</td>
+              <td>${esc(BEN_TYPES[b.subsidy_type] || b.subsidy_type || '—')}</td>
+              <td>${b.amount != null ? 'Rs ' + money(b.amount) : '—'}</td>
+              <td>${esc(b.given_date || '—')}</td>
+              <td><span class="badge ${b.status === 'distributed' ? 'up' : b.status === 'pending' ? 'stable' : ''}">${esc(b.status)}</span></td>
+              <td>${esc(b.remarks || '—')}</td>
+              <td style="white-space:nowrap">
+                <button class="btn btn-sm btn-ghost" style="padding:6px 8px" onclick="App.benEditRow(${b.id})">${icon('pencil')}</button>
+                <button class="btn btn-sm" style="background:var(--danger);padding:6px 8px" onclick="App.benDelete(${b.id})">${icon('trash-2')}</button>
+              </td>
+            </tr>`).join('')}
+            </tbody>
+          </table>` : '<p class="muted" style="text-align:center;padding:20px">No records yet. Add a beneficiary above or import from applications.</p>'}
+        </div>`;
+    },
+    benSearch() { ctx.benQ = ($('ben-q') || {}).value || ''; screens.adminBeneficiaries(); },
+    benFilterWard(w) { ctx.benWard = w || ''; screens.adminBeneficiaries(); },
+    benFilterStatus(s) { ctx.benStatus = s || ''; screens.adminBeneficiaries(); },
+    benEditRow(id) { ctx.benEdit = (ctx.benRows || []).find((r) => r.id === id) || null; screens.adminBeneficiaries(); window.scrollTo(0, 0); },
+    benCancelEdit() { ctx.benEdit = null; screens.adminBeneficiaries(); },
+    async benSave() {
+      const body = {
+        name: $('ben-name').value.trim(), age: $('ben-age').value, ward: $('ben-ward').value,
+        phone: $('ben-phone').value.trim(), address: $('ben-address').value.trim(),
+        subsidy_type: $('ben-type').value, amount: $('ben-amount').value,
+        given_date: $('ben-date').value, status: $('ben-status').value, remarks: $('ben-remarks').value.trim(),
+      };
+      if (!body.name) return toast('Enter a name');
+      const editing = !!(ctx.benEdit && ctx.benEdit.id);
+      try {
+        if (editing) await api('/beneficiaries/' + ctx.benEdit.id, { method: 'PATCH', body });
+        else await api('/beneficiaries', { method: 'POST', body });
+        ctx.benEdit = null;
+        toast(editing ? 'Record updated' : 'Record added');
+        go('adminBeneficiaries');
+      } catch (err) { toast(err.message); }
+    },
+    async benDelete(id) {
+      if (!(await confirmDialog('Delete this record?'))) return;
+      try { await api('/beneficiaries/' + id, { method: 'DELETE' }); toast('Deleted'); go('adminBeneficiaries'); }
+      catch (err) { toast(err.message); }
+    },
+    async benImport() {
+      if (!(await confirmDialog('Import all approved & distributed subsidy applications into the register? Already-imported ones are skipped.', { title: 'Import from applications' }))) return;
+      try {
+        const { imported, skipped } = await api('/beneficiaries/import', { method: 'POST', body: {} });
+        toast(`Imported ${imported} · skipped ${skipped} already in list`);
+        go('adminBeneficiaries');
+      } catch (err) { toast(err.message); }
+    },
+    benExport() {
+      const rows = ctx.benRows || [];
+      if (!rows.length) return toast('Nothing to export');
+      const headers = ['Name', 'Age', 'Ward', 'Phone', 'Address', 'Subsidy Type', 'Amount (Rs)', 'Date', 'Status', 'Remarks'];
+      const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+      const lines = [headers.join(',')];
+      for (const b of rows) {
+        lines.push([
+          b.name, b.age, b.ward, b.phone, b.address,
+          BEN_TYPES[b.subsidy_type] || b.subsidy_type || '', b.amount, b.given_date, b.status, b.remarks,
+        ].map(cell).join(','));
+      }
+      // Prepend a UTF-8 BOM so Excel renders Nepali/Unicode correctly.
+      const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `nagarpalika-beneficiaries-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast(`Exported ${rows.length} record(s)`);
+    },
+
     /* Admin: verify experts */
     async manageExperts() {
       const { experts } = await api('/experts');
@@ -1653,6 +1816,12 @@ const App = (() => {
   const EXP_UNITS = ['kg', 'gram', 'quintal', 'bag', 'litre', 'piece', 'packet', 'dozen'];
 
   // Marketplace ("Bazar") categories + icons / labels.
+  // Nagarpalika subsidy-beneficiary registry: subsidy types + record statuses.
+  const BEN_TYPES = {
+    seed: 'Seed', fertilizer: 'Fertilizer', equipment: 'Equipment', polyhouse: 'Polyhouse',
+    irrigation: 'Irrigation', livestock: 'Livestock', training: 'Training', other: 'Other',
+  };
+  const BEN_STATUS = ['pending', 'approved', 'distributed'];
   const SHOP_CATS = ['vegetable', 'fruit', 'grain', 'animal', 'dairy', 'handicraft', 'seed', 'tool', 'other'];
   const SHOP_LABEL = {
     vegetable: 'Vegetables', fruit: 'Fruits', grain: 'Grains', animal: 'Animals', dairy: 'Dairy',
@@ -2113,6 +2282,15 @@ const App = (() => {
     apSelectAll: (...a) => screens.apSelectAll(...a),
     apClearSel: (...a) => screens.apClearSel(...a),
     apDeleteSelected: (...a) => screens.apDeleteSelected(...a),
+    benSearch: (...a) => screens.benSearch(...a),
+    benFilterWard: (...a) => screens.benFilterWard(...a),
+    benFilterStatus: (...a) => screens.benFilterStatus(...a),
+    benEditRow: (...a) => screens.benEditRow(...a),
+    benCancelEdit: (...a) => screens.benCancelEdit(...a),
+    benSave: (...a) => screens.benSave(...a),
+    benDelete: (...a) => screens.benDelete(...a),
+    benImport: (...a) => screens.benImport(...a),
+    benExport: (...a) => screens.benExport(...a),
     setOrder: (...a) => screens.setOrder(...a),
     selectSalesMonth: (...a) => screens.selectSalesMonth(...a),
     showSale: (...a) => screens.showSale(...a),
