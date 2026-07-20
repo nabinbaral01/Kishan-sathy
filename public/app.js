@@ -252,6 +252,7 @@ const App = (() => {
           <button class="card" onclick="App.go('aiChat')"><span class="icon">${icon('sparkles')}</span><h3>Chat with AI</h3><p>Instant farming help</p></button>
           <button class="card" onclick="App.go('shop',{shopCat:null,shopQ:''})"><span class="icon">${icon('store')}</span><h3>Bazar</h3><p>Buy & sell local products</p></button>
           <button class="card" onclick="App.go('subsidies')"><span class="icon">${icon('hand-coins')}</span><h3>Subsidy</h3><p>Apply for अनुदान support</p></button>
+          <button class="card" onclick="App.go('feed')"><span class="icon">${icon('users')}</span><h3>Community</h3><p>Share & discuss with farmers</p></button>
         </div>
         <div class="panel"><div class="section-head"><h3>${icon('stethoscope')} AI Disease Detection</h3></div>
           <p class="muted">Photograph a plant and get a diagnosis.</p>
@@ -365,6 +366,97 @@ const App = (() => {
     },
     async deleteSubsidy(id) {
       try { await api('/subsidies/' + id, { method: 'DELETE' }); toast('Request cancelled'); go(user.role === 'super_admin' ? 'adminSubsidies' : 'subsidies'); }
+      catch (e) { toast(e.message); }
+    },
+
+    /* COMMUNITY FEED — a public wall (Facebook-style). Anyone can post text +
+       a photo; everyone can like and comment; admin can delete any post. */
+    async feed() {
+      const { posts } = await api('/feed');
+      const back = user.role === 'super_admin' ? 'admin' : 'home';
+      const admin = user.role === 'super_admin';
+      $('screen').innerHTML = `
+        <button class="back" onclick="App.go('${back}')">← Back</button>
+        <div class="panel">
+          <div class="section-head"><h2>${icon('users')} Community Feed</h2></div>
+          <p class="muted">Share updates, questions and photos with all farmers. Be respectful.</p>
+          <textarea id="post-text" placeholder="What's on your mind, ${esc((user.name || '').split(' ')[0])}?" style="min-height:70px"></textarea>
+          <div id="post-preview" style="margin:4px 0"></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <label class="btn btn-sm btn-ghost" style="display:inline-block;margin:0">${icon('image')} Photo
+              <input id="post-image" type="file" accept="image/*" class="hidden" onchange="App.previewPostImg(this)"/></label>
+            <button class="btn btn-sm" style="margin:0" onclick="App.submitPost()">${icon('send')} Post</button>
+          </div>
+        </div>
+        ${posts.length ? posts.map((p) => feedCard(p, admin)).join('') : '<p class="muted" style="text-align:center;padding:20px">No posts yet. Be the first to share something!</p>'}`;
+    },
+    async previewPostImg(input) {
+      const f = input.files && input.files[0];
+      if (!f) return;
+      ctx.postImg = await compressImage(f, { maxDim: 1280, quality: 0.72 });
+      const box = $('post-preview');
+      if (box) box.innerHTML = `<img src="${ctx.postImg}" style="max-width:100%;border-radius:10px"/>`;
+    },
+    async submitPost() {
+      const content = ($('post-text') || {}).value || '';
+      if (!content.trim() && !ctx.postImg) return toast('Write something or add a photo');
+      try {
+        await api('/feed', { method: 'POST', body: { content, image: ctx.postImg || undefined } });
+        ctx.postImg = null;
+        toast('Posted');
+        go('feed');
+      } catch (e) { toast(e.message); }
+    },
+    async toggleLike(id) {
+      try {
+        const { liked, like_count } = await api('/feed/' + id + '/like', { method: 'POST', body: {} });
+        const btn = $('like-' + id);
+        if (btn) {
+          btn.classList.toggle('liked', liked);
+          btn.innerHTML = `${icon('heart')} ${like_count}`;
+        }
+      } catch (e) { toast(e.message); }
+    },
+    async deletePost(id) {
+      if (!(await confirmDialog('Delete this post?'))) return;
+      try { await api('/feed/' + id, { method: 'DELETE' }); toast('Deleted'); go(ctx._screen === 'post' ? 'feed' : 'feed'); }
+      catch (e) { toast(e.message); }
+    },
+    async post() {
+      const id = ctx.postId;
+      const admin = user.role === 'super_admin';
+      const { post: p, comments } = await api('/feed/' + id);
+      $('screen').innerHTML = `
+        <button class="back" onclick="App.go('feed')">← Back to Feed</button>
+        ${feedCard(p, admin, true)}
+        <div class="panel">
+          <h3>${icon('message-circle')} Comments (${comments.length})</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="cmt-text" placeholder="Write a comment…" style="margin:0" onkeydown="if(event.key==='Enter')App.addComment(${id})"/>
+            <button class="btn btn-sm" onclick="App.addComment(${id})">${icon('send')}</button>
+          </div>
+          <div style="margin-top:10px">
+          ${comments.length ? comments.map((c) => `<div class="cmt-row">
+            <div class="feed-avatar sm">${c.author_avatar ? `<img src="${esc(c.author_avatar)}"/>` : icon('user-round')}</div>
+            <div style="min-width:0;flex:1">
+              <div class="cmt-bubble"><strong>${esc(c.author_name)}</strong>${c.author_role === 'super_admin' ? ' <span class="badge">Admin</span>' : ''}<br>${esc(c.content)}</div>
+              <div class="muted" style="font-size:.7rem;margin:2px 0 0 8px">${timeAgo(c.created_at)}
+                ${(c.user_id === user.id || admin) ? ` · <button class="link" style="font-size:.7rem" onclick="App.deleteComment(${c.id}, ${id})">Delete</button>` : ''}</div>
+            </div>
+          </div>`).join('') : '<p class="muted">No comments yet. Say something!</p>'}
+          </div>
+        </div>`;
+    },
+    async addComment(postId) {
+      const el = $('cmt-text');
+      const content = (el ? el.value : '').trim();
+      if (!content) return toast('Write a comment');
+      try { await api('/feed/' + postId + '/comment', { method: 'POST', body: { content } }); go('post', { postId }); }
+      catch (e) { toast(e.message); }
+    },
+    async deleteComment(id, postId) {
+      if (!(await confirmDialog('Delete this comment?'))) return;
+      try { await api('/feed/comments/' + id, { method: 'DELETE' }); toast('Deleted'); go('post', { postId }); }
       catch (e) { toast(e.message); }
     },
 
@@ -1374,6 +1466,7 @@ const App = (() => {
         <button class="btn" style="width:100%;margin-top:8px;background:#6a1b9a;color:#fff" onclick="App.go('adminSubsidies',{subStatus:'pending'})">${icon('hand-coins')} Subsidy Applications${pendingSubs ? ' (' + pendingSubs + ' pending)' : ''}</button>
         <button class="btn" style="width:100%;margin-top:8px;background:#00838f;color:#fff" onclick="App.go('adminProducts',{apCat:null,apQ:'',apStatus:''})">${icon('store')} Manage Bazar Products</button>
         <button class="btn" style="width:100%;margin-top:8px;background:#37474f;color:#fff" onclick="App.go('adminBeneficiaries',{benWard:'',benStatus:'',benQ:'',benEdit:null})">${icon('clipboard-list')} Nagarpalika Records</button>
+        <button class="btn" style="width:100%;margin-top:8px;background:#5d4037;color:#fff" onclick="App.go('feed')">${icon('users')} Community Feed (monitor)</button>
         </div>
         <div class="panel"><h3>Crops by Category</h3>${s.crops_by_category.map((r) => `<div class="row"><span>${esc(r.category)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
         <div class="panel"><h3>Crop Health</h3>${s.crop_health.map((r) => `<div class="row"><span>${esc(r.growth_status)}</span><strong>${r.count}</strong></div>`).join('') || '<p class="muted">—</p>'}</div>
@@ -1811,6 +1904,19 @@ const App = (() => {
   // Group digits with commas (e.g. 12500 -> "12,500").
   const money = (n) => Number(n || 0).toLocaleString('en-IN');
 
+  // Relative time like "5m", "3h", "2d"; falls back to a short date for older items.
+  const timeAgo = (t) => {
+    if (!t) return '';
+    const d = new Date(String(t).replace(' ', 'T') + 'Z');
+    if (isNaN(d)) return esc(t);
+    const s = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm';
+    if (s < 86400) return Math.floor(s / 3600) + 'h';
+    if (s < 604800) return Math.floor(s / 86400) + 'd';
+    return d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
+  };
+
   // Expense categories + their professional icons / labels.
   const EXP_CATS = ['wages', 'fertilizer', 'seed', 'plants', 'pesticide', 'equipment', 'transport', 'other'];
   const EXP_UNITS = ['kg', 'gram', 'quintal', 'bag', 'litre', 'piece', 'packet', 'dozen'];
@@ -1870,6 +1976,33 @@ const App = (() => {
       </div>` : ''}
       ${admin && s.status === 'approved' ? `<button class="btn btn-sm" style="margin-top:8px;background:#00695c;color:#fff" onclick="App.decideSubsidy(${s.id},'distributed')">Mark distributed</button>` : ''}
       ${!admin && s.status === 'pending' ? `<button class="btn btn-sm btn-ghost" style="margin-top:8px" onclick="App.deleteSubsidy(${s.id})">Cancel request</button>` : ''}
+    </div>`;
+  }
+  // A single community-feed post card. `admin` shows a delete on any post;
+  // `full` renders the post on its own detail screen (image not clickable-through).
+  function feedCard(p, admin, full) {
+    const mine = p.user_id === user.id;
+    const canDelete = mine || admin;
+    const roleBadge = p.author_role === 'super_admin' ? ' <span class="badge">Admin</span>'
+      : p.author_role === 'expert' ? ' <span class="badge">Expert</span>' : '';
+    const open = full ? '' : `onclick="App.go('post',{postId:${p.id}})" style="cursor:pointer"`;
+    return `<div class="panel feed-card" style="margin-bottom:8px">
+      <div style="display:flex;gap:10px;align-items:center">
+        <div class="feed-avatar">${p.author_avatar ? `<img src="${esc(p.author_avatar)}"/>` : icon('user-round')}</div>
+        <div style="min-width:0;flex:1">
+          <strong>${esc(p.author_name)}</strong>${roleBadge}<br>
+          <span class="muted" style="font-size:.72rem">${p.author_ward ? 'Ward ' + p.author_ward + ' · ' : ''}${timeAgo(p.created_at)}</span>
+        </div>
+        ${canDelete ? `<button class="btn btn-sm" style="background:var(--danger);padding:6px 8px" onclick="event.stopPropagation();App.deletePost(${p.id})">${icon('trash-2')}</button>` : ''}
+      </div>
+      <div ${open}>
+        ${p.content ? `<p style="margin:8px 0 0;white-space:pre-wrap">${esc(p.content)}</p>` : ''}
+        ${p.image ? `<img src="${esc(p.image)}" style="width:100%;border-radius:12px;margin-top:8px"/>` : ''}
+      </div>
+      <div style="display:flex;gap:14px;align-items:center;margin-top:10px;border-top:1px solid #eef2ee;padding-top:8px">
+        <button id="like-${p.id}" class="feed-act ${p.liked ? 'liked' : ''}" onclick="App.toggleLike(${p.id})">${icon('heart')} ${p.like_count}</button>
+        <button class="feed-act" onclick="App.go('post',{postId:${p.id}})">${icon('message-circle')} ${p.comment_count}</button>
+      </div>
     </div>`;
   }
   // Update the bulk-delete button + select-all box without a full re-render
@@ -2254,6 +2387,12 @@ const App = (() => {
     deleteSubsidy: (...a) => screens.deleteSubsidy(...a),
     setSubStatus: (...a) => screens.setSubStatus(...a),
     decideSubsidy: (...a) => screens.decideSubsidy(...a),
+    previewPostImg: (...a) => screens.previewPostImg(...a),
+    submitPost: (...a) => screens.submitPost(...a),
+    toggleLike: (...a) => screens.toggleLike(...a),
+    deletePost: (...a) => screens.deletePost(...a),
+    addComment: (...a) => screens.addComment(...a),
+    deleteComment: (...a) => screens.deleteComment(...a),
     enableLocation: (...a) => screens.enableLocation(...a),
     openNotif: (...a) => screens.openNotif(...a),
     previewAvatar: (...a) => screens.previewAvatar(...a),

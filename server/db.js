@@ -360,6 +360,28 @@ CREATE TABLE IF NOT EXISTS beneficiaries (
   source_subsidy_id INTEGER,
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Community feed: posts, likes and comments (Facebook-style wall).
+CREATE TABLE IF NOT EXISTS posts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL,
+  content    TEXT,
+  image      TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS post_likes (
+  post_id    INTEGER NOT NULL,
+  user_id    INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (post_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS post_comments (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  post_id    INTEGER NOT NULL,
+  user_id    INTEGER NOT NULL,
+  content    TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 /** Add a column if the table doesn't already have it (lightweight migration). */
