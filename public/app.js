@@ -439,7 +439,7 @@ const App = (() => {
           ${comments.length ? comments.map((c) => `<div class="cmt-row">
             <div class="feed-avatar sm">${c.author_avatar ? `<img src="${esc(c.author_avatar)}"/>` : icon('user-round')}</div>
             <div style="min-width:0;flex:1">
-              <div class="cmt-bubble"><strong>${esc(c.author_name)}</strong>${c.author_role === 'super_admin' ? ' <span class="badge">Admin</span>' : ''}<br>${esc(c.content)}</div>
+              <div class="cmt-bubble">${feedAuthor(c.author_role, c.author_name)}<br>${esc(c.content)}</div>
               <div class="muted" style="font-size:.7rem;margin:2px 0 0 8px">${timeAgo(c.created_at)}
                 ${(c.user_id === user.id || admin) ? ` · <button class="link" style="font-size:.7rem" onclick="App.deleteComment(${c.id}, ${id})">Delete</button>` : ''}</div>
             </div>
@@ -1994,19 +1994,27 @@ const App = (() => {
       ${!admin && s.status === 'pending' ? `<button class="btn btn-sm btn-ghost" style="margin-top:8px" onclick="App.deleteSubsidy(${s.id})">Cancel request</button>` : ''}
     </div>`;
   }
+  // The display name + badge for a feed author. The municipality account posts
+  // as "Nagarpalika" with an official blue tick (never its raw "Super Admin" name).
+  function feedAuthor(role, name) {
+    if (role === 'super_admin') {
+      return `<strong>Nagarpalika</strong> ${icon('badge-check', 'verified-tick')}`;
+    }
+    const badge = role === 'expert' ? ' <span class="badge">Expert</span>' : '';
+    return `<strong>${esc(name)}</strong>${badge}`;
+  }
+
   // A single community-feed post card. `admin` shows a delete on any post;
   // `full` renders the post on its own detail screen (image not clickable-through).
   function feedCard(p, admin, full) {
     const mine = p.user_id === user.id;
     const canDelete = mine || admin;
-    const roleBadge = p.author_role === 'super_admin' ? ' <span class="badge">Admin</span>'
-      : p.author_role === 'expert' ? ' <span class="badge">Expert</span>' : '';
     const open = full ? '' : `onclick="App.go('post',{postId:${p.id}})" style="cursor:pointer"`;
     return `<div class="panel feed-card" style="margin-bottom:8px">
       <div style="display:flex;gap:10px;align-items:center">
         <div class="feed-avatar">${p.author_avatar ? `<img src="${esc(p.author_avatar)}"/>` : icon('user-round')}</div>
         <div style="min-width:0;flex:1">
-          <strong>${esc(p.author_name)}</strong>${roleBadge}<br>
+          ${feedAuthor(p.author_role, p.author_name)}<br>
           <span class="muted" style="font-size:.72rem">${p.author_ward ? 'Ward ' + p.author_ward + ' · ' : ''}${timeAgo(p.created_at)}</span>
         </div>
         ${canDelete ? `<button class="btn btn-sm" style="background:var(--danger);padding:6px 8px" onclick="event.stopPropagation();App.deletePost(${p.id})">${icon('trash-2')}</button>` : ''}

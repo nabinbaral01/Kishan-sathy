@@ -63,6 +63,9 @@ input, select, textarea {
 .feed-act:hover { background: #f2f6f2; }
 .feed-act.liked { color: var(--danger); font-weight: 600; }
 .feed-act.liked .ic { fill: var(--danger); }
+/* Official Nagarpalika blue tick (Twitter/Facebook-style verified mark) */
+.verified-tick { color: #1d9bf0; width: 16px; height: 16px; vertical-align: -3px; }
+.verified-tick svg { fill: #1d9bf0; stroke: #fff; }
 .cmt-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px; }
 .cmt-bubble { background: #f2f6f2; border-radius: 12px; padding: 8px 12px; font-size: .88rem; display: inline-block; }
 
