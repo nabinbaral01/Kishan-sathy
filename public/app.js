@@ -118,6 +118,19 @@ const App = (() => {
     renderIcons();
   }
 
+  /* Show/hide a password field, swapping the eye icon. */
+  function togglePw(id, btn) {
+    const input = document.getElementById(id);
+    if (!input) return;
+    const reveal = input.type === 'password';
+    input.type = reveal ? 'text' : 'password';
+    if (btn) {
+      btn.setAttribute('aria-label', reveal ? 'Hide password' : 'Show password');
+      btn.innerHTML = icon(reveal ? 'eye-off' : 'eye');
+      renderIcons();
+    }
+  }
+
   /* ---------- Auth ---------- */
   function toggleAuth(showRegister) {
     $('login-form').classList.toggle('hidden', showRegister);
@@ -1122,7 +1135,10 @@ const App = (() => {
           <button class="btn btn-sm" onclick="App.saveProfile()">Save changes</button>
         </div>
         <div class="panel"><h3>${icon('lock')} Change password</h3>
-          <input id="pf-pass" type="password" placeholder="New password"/>
+          <div class="pw-wrap">
+            <input id="pf-pass" type="password" placeholder="New password"/>
+            <button type="button" class="pw-eye" aria-label="Show password" onclick="App.togglePw('pf-pass', this)">${icon('eye')}</button>
+          </div>
           <button class="btn btn-sm btn-ghost" onclick="App.changePassword()">Update password</button>
         </div>`;
     },
@@ -2056,7 +2072,7 @@ const App = (() => {
   // Note: detect/submitFarm/submitCrop/submitUpdate/addPrice/broadcast/saveExpert/
   // toggleUser live on the `screens` object, so expose them via thin wrappers.
   return {
-    login, register, onRoleChange, toggleAuth, logout, go, sendMsg, openExpertChat, init,
+    login, register, onRoleChange, toggleAuth, logout, go, sendMsg, openExpertChat, init, togglePw,
     filterExperts, toggleSelectExpert, clearExpertSel, deleteSelectedExperts,
     detect: (...a) => screens.detect(...a),
     submitFarm: (...a) => screens.submitFarm(...a),

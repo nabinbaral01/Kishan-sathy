@@ -53,6 +53,14 @@ input, select, textarea {
   width: 100%; padding: 12px; margin: 6px 0 12px; border: 1px solid #cdd6cd;
   border-radius: 10px; font-size: 1rem; background: #fff;
 }
+/* Password field with a show/hide eye toggle */
+.pw-wrap { position: relative; margin: 6px 0 12px; }
+.pw-wrap input { margin: 0; padding-right: 46px; }
+.pw-eye { position: absolute; top: 0; bottom: 0; right: 4px; width: 40px;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: none; color: #6b776b; cursor: pointer; padding: 0; }
+.pw-eye:hover { color: var(--green-dark); }
+.pw-eye .ic { width: 20px; height: 20px; }
 .btn { background: var(--green); color: #fff; border: none; padding: 13px;
   border-radius: 12px; font-size: 1.02rem; font-weight: 600; width: 100%; }
 .btn:hover { background: var(--green-dark); }

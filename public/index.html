@@ -18,7 +18,10 @@
 
       <div id="login-form">
         <input id="login-id" placeholder="Phone or Email" autocomplete="username" />
-        <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" />
+        <div class="pw-wrap">
+          <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" />
+          <button type="button" class="pw-eye" aria-label="Show password" onclick="App.togglePw('login-pass', this)"><i data-lucide="eye"></i></button>
+        </div>
         <button class="btn" onclick="App.login()">Login</button>
         <p class="error" id="login-err"></p>
         <p class="muted" style="text-align:center">
@@ -52,7 +55,10 @@
           <option value="10">Ward No. 10</option>
           <option value="11">Ward No. 11</option>
         </select>
-        <input id="reg-pass" type="password" placeholder="Password" />
+        <div class="pw-wrap">
+          <input id="reg-pass" type="password" placeholder="Password" />
+          <button type="button" class="pw-eye" aria-label="Show password" onclick="App.togglePw('reg-pass', this)"><i data-lucide="eye"></i></button>
+        </div>
         <button class="btn" onclick="App.register()">Register</button>
         <p class="error" id="reg-err"></p>
         <p class="muted" style="text-align:center">
