@@ -1325,17 +1325,17 @@ const App = (() => {
           <label class="muted" style="display:block;margin:4px 0 2px">🏔️ Province *</label>
           <select id="cp-province" onchange="App.cpProvinceChange()">
             <option value="">Select province</option>
-            ${Object.keys(NEPAL).map((p) => `<option value="${esc(p)}" ${u.province === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}
+            ${Object.keys(NEPAL_DATA).map((p) => `<option value="${esc(p)}" ${u.province === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}
           </select>
 
           <label class="muted" style="display:block;margin:4px 0 2px">📍 District *</label>
           <select id="cp-district" onchange="App.cpDistrictChange()"></select>
 
           <label class="muted" style="display:block;margin:4px 0 2px">🏘️ Palika / Municipality *</label>
-          <div id="cp-palika-box"></div>
+          <select id="cp-palika" onchange="App.cpPalikaChange()"></select>
 
           <label class="muted" style="display:block;margin:4px 0 2px">Ward number *</label>
-          <div id="cp-ward-box"></div>
+          <select id="cp-ward"></select>
 
           <label class="muted" style="display:block;margin:4px 0 2px">📞 Phone number *</label>
           <input id="cp-phone" type="tel" placeholder="98XXXXXXXX" value="${esc(u.phone || '')}"/>
@@ -2195,27 +2195,11 @@ const App = (() => {
       ${!admin && s.status === 'pending' ? `<button class="btn btn-sm btn-ghost" style="margin-top:8px" onclick="App.deleteSubsidy(${s.id})">Cancel request</button>` : ''}
     </div>`;
   }
-  // Nepal's 7 provinces and their 77 districts (used by the onboarding form).
-  const NEPAL = {
-    Koshi: ['Bhojpur', 'Dhankuta', 'Ilam', 'Jhapa', 'Khotang', 'Morang', 'Okhaldhunga', 'Panchthar', 'Sankhuwasabha', 'Solukhumbu', 'Sunsari', 'Taplejung', 'Terhathum', 'Udayapur'],
-    Madhesh: ['Bara', 'Dhanusha', 'Mahottari', 'Parsa', 'Rautahat', 'Saptari', 'Sarlahi', 'Siraha'],
-    Bagmati: ['Bhaktapur', 'Chitwan', 'Dhading', 'Dolakha', 'Kathmandu', 'Kavrepalanchok', 'Lalitpur', 'Makwanpur', 'Nuwakot', 'Ramechhap', 'Rasuwa', 'Sindhuli', 'Sindhupalchok'],
-    Gandaki: ['Baglung', 'Gorkha', 'Kaski', 'Lamjung', 'Manang', 'Mustang', 'Myagdi', 'Nawalpur', 'Parbat', 'Syangja', 'Tanahun'],
-    Lumbini: ['Arghakhanchi', 'Banke', 'Bardiya', 'Dang', 'Gulmi', 'Kapilvastu', 'Palpa', 'Parasi', 'Pyuthan', 'Rolpa', 'Rukum East', 'Rupandehi'],
-    Karnali: ['Dailekh', 'Dolpa', 'Humla', 'Jajarkot', 'Jumla', 'Kalikot', 'Mugu', 'Rukum West', 'Salyan', 'Surkhet'],
-    Sudurpashchim: ['Achham', 'Baitadi', 'Bajhang', 'Bajura', 'Dadeldhura', 'Darchula', 'Doti', 'Kailali', 'Kanchanpur'],
-  };
-  // Local units we list explicitly. Taplejung is the municipality this app serves,
-  // so its 9 palikas are offered as a dropdown; elsewhere the farmer types theirs.
-  const PALIKAS = {
-    Taplejung: ['Phungling Municipality', 'Aathrai Tribeni', 'Maiwakhola', 'Meringden', 'Mikwakhola', 'Phaktanglung', 'Sidingba', 'Sirijangha', 'Yangwarak'],
-  };
-  // How many wards each local unit has, so the ward dropdown only offers real
-  // options. Anything not listed falls back to a free number box (1–33) rather
-  // than showing a made-up range.
-  const PALIKA_WARDS = {
-    'Phungling Municipality': 11,
-  };
+  // Every province/district/local unit of Nepal with real ward counts, loaded
+  // from nepal-data.js: NEPAL_DATA[province][district] = [[unitName, wards], …].
+  const NEPAL_DATA = window.NEPAL_DATA || {};
+  const districtsOf = (province) => Object.keys(NEPAL_DATA[province] || {});
+  const unitsOf = (province, district) => ((NEPAL_DATA[province] || {})[district] || []);
 
   const MAX_POST_IMAGES = 6;
 
@@ -2224,42 +2208,30 @@ const App = (() => {
      (Taplejung), otherwise a free-text box so nothing is invented. */
   function renderCpDistricts(selected) {
     const sel = $('cp-district'); if (!sel) return;
-    const province = ($('cp-province') || {}).value || '';
-    const list = NEPAL[province] || [];
-    sel.innerHTML = `<option value="">${province ? 'Select district' : 'Select a province first'}</option>`
+    const list = districtsOf(($('cp-province') || {}).value || '');
+    sel.innerHTML = `<option value="">${list.length ? 'Select district' : 'Select a province first'}</option>`
       + list.map((d) => `<option value="${esc(d)}" ${d === selected ? 'selected' : ''}>${esc(d)}</option>`).join('');
     sel.disabled = !list.length;
   }
   function renderCpPalika(selected) {
-    const box = $('cp-palika-box'); if (!box) return;
-    const district = ($('cp-district') || {}).value || '';
-    const known = PALIKAS[district];
-    if (known) {
-      box.innerHTML = `<select id="cp-palika" onchange="App.cpPalikaChange()"><option value="">Select palika</option>`
-        + known.map((p) => `<option value="${esc(p)}" ${p === selected ? 'selected' : ''}>${esc(p)}</option>`).join('')
-        + `</select>`;
-    } else {
-      box.innerHTML = `<input id="cp-palika" onchange="App.cpPalikaChange()"
-        placeholder="${district ? 'Type your palika / municipality' : 'Select a district first'}"
-        value="${esc(selected)}" ${district ? '' : 'disabled'}/>`;
-    }
+    const sel = $('cp-palika'); if (!sel) return;
+    const units = unitsOf(($('cp-province') || {}).value || '', ($('cp-district') || {}).value || '');
+    sel.innerHTML = `<option value="">${units.length ? 'Select palika / municipality' : 'Select a district first'}</option>`
+      + units.map(([name]) => `<option value="${esc(name)}" ${name === selected ? 'selected' : ''}>${esc(name)}</option>`).join('');
+    sel.disabled = !units.length;
   }
-  /* Ward options come from the chosen palika — each local unit has its own ward
-     count (Phungling has 11). Unknown palikas get a plain number box. */
+  /* Ward options come from the chosen local unit — each has its own ward count
+     (Phungling Municipality has 11, Mikwa Khola has 5, and so on). */
   function renderCpWard(selected) {
-    const box = $('cp-ward-box'); if (!box) return;
+    const sel = $('cp-ward'); if (!sel) return;
     const palika = ($('cp-palika') || {}).value || '';
-    const count = PALIKA_WARDS[palika];
-    if (count) {
-      box.innerHTML = `<select id="cp-ward"><option value="">Select ward (1–${count})</option>`
-        + Array.from({ length: count }, (_, i) => i + 1)
-            .map((w) => `<option value="${w}" ${String(w) === String(selected) ? 'selected' : ''}>Ward No. ${w}</option>`).join('')
-        + `</select>`;
-    } else {
-      box.innerHTML = `<input id="cp-ward" type="number" min="1" max="33"
-        placeholder="${palika ? 'Enter your ward number' : 'Select a palika first'}"
-        value="${esc(selected)}" ${palika ? '' : 'disabled'}/>`;
-    }
+    const units = unitsOf(($('cp-province') || {}).value || '', ($('cp-district') || {}).value || '');
+    const found = units.find(([name]) => name === palika);
+    const count = found ? found[1] : 0;
+    sel.innerHTML = `<option value="">${count ? `Select ward (1–${count})` : 'Select a palika first'}</option>`
+      + Array.from({ length: count }, (_, i) => i + 1)
+          .map((w) => `<option value="${w}" ${String(w) === String(selected) ? 'selected' : ''}>Ward No. ${w}</option>`).join('');
+    sel.disabled = !count;
   }
 
   // Rebuild just the composer's photo strip (never the whole screen, so text
