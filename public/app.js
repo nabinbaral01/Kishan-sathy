@@ -2528,26 +2528,35 @@ const App = (() => {
       toast(r.message || 'If that email is registered, a code has been sent.');
     } catch (e) { return toast(e.message); }
 
-    // Let them retry the code without restarting the whole flow.
+    // Check the code straight away so a wrong one is flagged here — never after
+    // the user has already typed a new password.
     for (;;) {
-      const code = await promptDialog(`Enter the 6-digit code we emailed to ${email}.`, {
+      const entered = await promptDialog(`Enter the 6-digit code we emailed to ${email}.`, {
         title: 'Enter code', ok: 'Verify', placeholder: '123456',
       });
-      if (code === null) return;
-      if (!code.trim()) { toast('Please enter the code'); continue; }
-
-      const pass = await promptDialog('Choose a new password for your account.', {
-        title: 'New password', ok: 'Save password', placeholder: 'At least 4 characters', type: 'password',
-      });
-      if (pass === null) return;
-      if (!pass || pass.length < 4) { toast('Password must be at least 4 characters'); continue; }
+      if (entered === null) return;
+      const code = (entered || '').trim();
+      if (!code) { toast('Please enter the code'); continue; }
 
       try {
-        await api('/auth/reset', { method: 'POST', body: { email, code: code.trim(), password: pass } });
-        return toast('Password updated — please log in with your new password.');
+        await api('/auth/verify-code', { method: 'POST', body: { email, code } });
       } catch (e) {
         toast(e.message);
-        if (!/incorrect code/i.test(e.message || '')) return; // expired/too many -> stop
+        if (/incorrect code/i.test(e.message || '')) continue; // wrong -> ask again
+        return; // expired or too many attempts -> stop
+      }
+
+      // Code confirmed — now it's safe to collect the new password.
+      for (;;) {
+        const pass = await promptDialog('Code verified ✓ Choose a new password.', {
+          title: 'New password', ok: 'Save password', placeholder: 'At least 4 characters', type: 'password',
+        });
+        if (pass === null) return;
+        if (!pass || pass.length < 4) { toast('Password must be at least 4 characters'); continue; }
+        try {
+          await api('/auth/reset', { method: 'POST', body: { email, code, password: pass } });
+          return toast('Password updated — please log in with your new password.');
+        } catch (e) { toast(e.message); return; }
       }
     }
   }

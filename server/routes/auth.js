@@ -77,6 +77,48 @@ router.post('/forgot', async (req, res) => {
 });
 
 /**
+ * Validate an emailed OTP for `email` WITHOUT consuming it.
+ * Returns { row } when the code is good, otherwise { status, error }.
+ * A wrong guess burns one of the 5 attempts.
+ */
+async function checkResetCode(email, otp) {
+  const mail = (email || '').trim().toLowerCase();
+  const code = String(otp || '').trim();
+  if (!mail || !code) return { status: 400, error: 'email and code are required' };
+
+  const user = await get(`SELECT id FROM users WHERE lower(email) = ?`, [mail]);
+  if (!user) return { status: 400, error: 'That code is not valid. Please request a new one.' };
+
+  const row = await get(
+    `SELECT * FROM password_resets WHERE user_id = ? AND used = 0 ORDER BY created_at DESC LIMIT 1`,
+    [user.id]
+  );
+  if (!row || new Date(row.expires_at) < new Date()) {
+    return { status: 400, error: 'That code has expired. Please request a new one.' };
+  }
+  if (row.attempts >= 5) {
+    await run(`UPDATE password_resets SET used = 1 WHERE token = ?`, [row.token]);
+    return { status: 429, error: 'Too many wrong attempts. Please request a new code.' };
+  }
+  if (String(row.code) !== code) {
+    await run(`UPDATE password_resets SET attempts = attempts + 1 WHERE token = ?`, [row.token]);
+    return { status: 400, error: `Incorrect code. ${4 - row.attempts} attempt(s) left.` };
+  }
+  return { row };
+}
+
+/**
+ * POST /api/auth/verify-code { email, code } — check the OTP on its own so the
+ * UI can warn immediately, before asking for a new password. Does not use it up.
+ */
+router.post('/verify-code', async (req, res) => {
+  await ensureResetTable();
+  const r = await checkResetCode(req.body?.email, req.body?.code);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json({ ok: true });
+});
+
+/**
  * POST /api/auth/reset — set a new password.
  * OTP flow:  { email, code, password }
  * Link flow: { token, password }   (kept for reset links)
@@ -94,27 +136,9 @@ router.post('/reset', async (req, res) => {
     row = await get(`SELECT * FROM password_resets WHERE token = ?`, [token]);
     if (expired(row)) return res.status(400).json({ error: 'This reset link is invalid or has expired. Please request a new one.' });
   } else {
-    const mail = (email || '').trim().toLowerCase();
-    const otp = String(code || '').trim();
-    if (!mail || !otp) return res.status(400).json({ error: 'email and code are required' });
-
-    const user = await get(`SELECT id FROM users WHERE lower(email) = ?`, [mail]);
-    if (!user) return res.status(400).json({ error: 'That code is not valid. Please request a new one.' });
-
-    row = await get(
-      `SELECT * FROM password_resets WHERE user_id = ? AND used = 0 ORDER BY created_at DESC LIMIT 1`,
-      [user.id]
-    );
-    if (expired(row)) return res.status(400).json({ error: 'That code has expired. Please request a new one.' });
-    // Throttle guessing: 5 wrong tries burns the code.
-    if (row.attempts >= 5) {
-      await run(`UPDATE password_resets SET used = 1 WHERE token = ?`, [row.token]);
-      return res.status(429).json({ error: 'Too many wrong attempts. Please request a new code.' });
-    }
-    if (String(row.code) !== otp) {
-      await run(`UPDATE password_resets SET attempts = attempts + 1 WHERE token = ?`, [row.token]);
-      return res.status(400).json({ error: `Incorrect code. ${4 - row.attempts} attempt(s) left.` });
-    }
+    const r = await checkResetCode(email, code);
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    row = r.row;
   }
 
   await run(`UPDATE users SET password_hash = ? WHERE id = ?`, [bcrypt.hashSync(password, 10), row.user_id]);
