@@ -44,7 +44,7 @@ router.post('/forgot', async (req, res) => {
   await ensureResetTable();
   const email = (req.body?.email || '').trim().toLowerCase();
   if (!email) return res.status(400).json({ error: 'email is required' });
-  const genericOk = { ok: true, message: 'If that email is registered, a reset link has been sent.' };
+  const genericOk = { ok: true, message: 'If that email is registered, a 6-digit code has been sent.' };
 
   const user = await get(`SELECT id, name, email FROM users WHERE lower(email) = ?`, [email]);
   if (!user || !user.email) return res.json(genericOk); // don't leak account existence
