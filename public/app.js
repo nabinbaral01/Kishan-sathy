@@ -1337,6 +1337,9 @@ const App = (() => {
           <label class="muted" style="display:block;margin:4px 0 2px">Ward number *</label>
           <select id="cp-ward"></select>
 
+          <label class="muted" style="display:block;margin:4px 0 2px">🏠 Tole / Village name</label>
+          <input id="cp-tole" placeholder="e.g. Deurali Tole" value="${esc(u.address || '')}"/>
+
           <label class="muted" style="display:block;margin:4px 0 2px">📞 Phone number *</label>
           <input id="cp-phone" type="tel" placeholder="98XXXXXXXX" value="${esc(u.phone || '')}"/>
 
@@ -1381,7 +1384,7 @@ const App = (() => {
       try {
         const { user: updated } = await api('/users/' + user.id, {
           method: 'PATCH',
-          body: { name, province, district, palika, ward, phone, gender },
+          body: { name, province, district, palika, ward, phone, gender, address: $('cp-tole').value.trim() },
         });
         user = { ...user, name: updated.name, ward: updated.ward, phone: updated.phone };
         localStorage.setItem('ks_user', JSON.stringify(user));
