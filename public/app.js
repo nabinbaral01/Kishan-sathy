@@ -93,6 +93,39 @@ const App = (() => {
     });
   }
 
+  // Like confirmDialog but with a text input. Resolves the entered string, or
+  // null if cancelled. Used for admin password reset and email prompts.
+  function promptDialog(message, { title = 'Enter a value', ok = 'OK', cancel = 'Cancel', placeholder = '', type = 'text', value = '' } = {}) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal" role="dialog" aria-modal="true">
+          <h3 class="modal-title"></h3>
+          <p class="modal-msg"></p>
+          <input class="modal-input" style="margin:0 0 12px"/>
+          <div class="modal-actions">
+            <button class="btn btn-sm btn-ghost" data-act="cancel"></button>
+            <button class="btn btn-sm" data-act="ok"></button>
+          </div>
+        </div>`;
+      overlay.querySelector('.modal-title').textContent = title;
+      overlay.querySelector('.modal-msg').textContent = message;
+      const input = overlay.querySelector('.modal-input');
+      input.type = type; input.placeholder = placeholder; input.value = value;
+      overlay.querySelector('[data-act=cancel]').textContent = cancel;
+      overlay.querySelector('[data-act=ok]').textContent = ok;
+      const close = (val) => { document.removeEventListener('keydown', onKey); overlay.remove(); resolve(val); };
+      const onKey = (e) => { if (e.key === 'Escape') close(null); if (e.key === 'Enter') close(input.value); };
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+      overlay.querySelector('[data-act=cancel]').onclick = () => close(null);
+      overlay.querySelector('[data-act=ok]').onclick = () => close(input.value);
+      document.addEventListener('keydown', onKey);
+      document.body.appendChild(overlay);
+      requestAnimationFrame(() => { overlay.classList.add('show'); input.focus(); });
+    });
+  }
+
   /* ---------- Professional icons (Lucide) ---------- */
   // icon('camera') -> placeholder span that Lucide turns into an inline SVG.
   const icon = (name, cls = '') => `<i data-lucide="${name}" class="ic ${cls}"></i>`;
@@ -1928,11 +1961,23 @@ const App = (() => {
           <div style="flex:1;min-width:0;cursor:pointer" onclick="App.openUserProfile(${u.id})">
             <strong>${esc(u.name)}</strong> <span class="badge">${esc(labelRole(u.role))}</span> ${u.active ? '' : '<span class="badge stable">disabled</span>'}<br>
             <span class="muted">${esc(u.phone || u.email || '')}</span></div>
-          <button class="btn btn-sm ${u.active ? 'btn-ghost' : ''}" onclick="event.stopPropagation(); App.toggleUser(${u.id},${u.active ? 0 : 1})">${u.active ? 'Disable' : 'Enable'}</button></div>`).join('')}
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn btn-sm btn-ghost" title="Reset this user's password" onclick="event.stopPropagation(); App.resetUserPassword(${u.id}, '${esc(u.name).replace(/'/g, '&#39;')}')">${icon('key-round')}</button>
+            <button class="btn btn-sm ${u.active ? 'btn-ghost' : ''}" onclick="event.stopPropagation(); App.toggleUser(${u.id},${u.active ? 0 : 1})">${u.active ? 'Disable' : 'Enable'}</button>
+          </div></div>`).join('')}
       </div>`;
     },
     async toggleUser(id, active) {
       try { await api(`/users/${id}/status`, { method: 'PATCH', body: { active } }); toast('Updated'); go('users'); } catch (e) { toast(e.message); }
+    },
+    // Nagarpalika sets a new password for any user (helps phone-only farmers who
+    // can't use email recovery). Uses the existing admin-allowed PATCH /users/:id.
+    async resetUserPassword(id, name) {
+      const pass = await promptDialog(`New password for ${name}`, { title: 'Reset password', placeholder: 'At least 4 characters' });
+      if (pass === null) return; // cancelled
+      if (!pass || pass.length < 4) return toast('Password must be at least 4 characters');
+      try { await api('/users/' + id, { method: 'PATCH', body: { password: pass } }); toast('Password reset — share it with the user'); }
+      catch (e) { toast(e.message); }
     },
     async verifyExpert(id, verified) {
       try {
@@ -2529,6 +2574,7 @@ const App = (() => {
     broadcast: (...a) => screens.broadcast(...a),
     saveExpert: (...a) => screens.saveExpert(...a),
     toggleUser: (...a) => screens.toggleUser(...a),
+    resetUserPassword: (...a) => screens.resetUserPassword(...a),
     manageExperts: (...a) => screens.manageExperts(...a),
     verifyExpert: (...a) => screens.verifyExpert(...a),
   };
