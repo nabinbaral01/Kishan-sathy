@@ -1,24 +1,63 @@
 /**
- * Minimal transactional email sender via Resend (REST, no SDK — Node fetch).
- * Configure with two env vars:
- *   RESEND_API_KEY   your key from https://resend.com/api-keys
- *   EMAIL_FROM       e.g. "Kisan Sathi <onboarding@resend.dev>" (test) or your domain
+ * Transactional email with two interchangeable backends.
  *
- * Until a key is set, isEnabled() is false and callers should degrade gracefully.
+ * Gmail SMTP (preferred when set) — delivers to ANY recipient, ~500/day:
+ *   GMAIL_USER          your full Gmail address
+ *   GMAIL_APP_PASSWORD  16-char App Password (Google account > Security)
+ *
+ * Resend (fallback) — needs a verified domain to reach anyone but the owner:
+ *   RESEND_API_KEY      key from https://resend.com/api-keys
+ *
+ * Shared:
+ *   EMAIL_FROM          display sender; defaults sensibly per backend.
+ *
+ * With neither configured, isEnabled() is false and callers degrade gracefully.
  */
 require('dotenv').config();
 
 const API_KEY = process.env.RESEND_API_KEY || '';
-const FROM = process.env.EMAIL_FROM || 'Kisan Sathi <onboarding@resend.dev>';
+const GMAIL_USER = process.env.GMAIL_USER || '';
+const GMAIL_PASS = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, ''); // Google shows it in groups of 4
+const useGmail = Boolean(GMAIL_USER && GMAIL_PASS);
+const FROM = process.env.EMAIL_FROM
+  || (useGmail ? `Kisan Sathi <${GMAIL_USER}>` : 'Kisan Sathi <onboarding@resend.dev>');
 
-const isEnabled = () => Boolean(API_KEY);
+const isEnabled = () => useGmail || Boolean(API_KEY);
+
+let transport = null;
+function gmailTransport() {
+  if (!transport) {
+    const nodemailer = require('nodemailer');
+    transport = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: GMAIL_USER, pass: GMAIL_PASS },
+    });
+  }
+  return transport;
+}
 
 async function sendEmail({ to, subject, html }) {
-  if (!API_KEY) throw new Error('Email is not configured (RESEND_API_KEY missing)');
+  const recipients = Array.isArray(to) ? to : [to];
+
+  if (useGmail) {
+    try {
+      const info = await gmailTransport().sendMail({ from: FROM, to: recipients.join(','), subject, html });
+      return { id: info.messageId };
+    } catch (e) {
+      const err = new Error(e.message || 'Gmail send failed');
+      // Wrong/missing App Password, or 2-Step Verification not enabled.
+      if (/invalid login|username and password not accepted|BadCredentials/i.test(e.message || '')) {
+        err.code = 'EMAIL_AUTH';
+      }
+      throw err;
+    }
+  }
+
+  if (!API_KEY) throw new Error('Email is not configured (set GMAIL_USER + GMAIL_APP_PASSWORD, or RESEND_API_KEY)');
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: FROM, to: Array.isArray(to) ? to : [to], subject, html }),
+    body: JSON.stringify({ from: FROM, to: recipients, subject, html }),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
