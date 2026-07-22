@@ -516,8 +516,11 @@ const App = (() => {
         <div class="panel">
           <h3>${icon('message-circle')} Comments (${comments.length})</h3>
           <div style="display:flex;gap:8px;align-items:center">
-            <input id="cmt-text" placeholder="Write a comment…" style="margin:0" onkeydown="if(event.key==='Enter')App.addComment(${id})"/>
-            <button class="btn btn-sm" onclick="App.addComment(${id})">${icon('send')}</button>
+            <input id="cmt-text" placeholder="Write a comment…" style="margin:0;min-height:44px"
+              autocomplete="off" enterkeyhint="send"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();App.addComment(${id});}"/>
+            <button type="button" class="btn btn-sm" style="min-height:44px;flex:0 0 auto"
+              onclick="App.addComment(${id})">${icon('send')} Send</button>
           </div>
           <div style="margin-top:10px">
           ${comments.length ? comments.map((c) => `<div class="cmt-row">
