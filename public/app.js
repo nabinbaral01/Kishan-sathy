@@ -2482,8 +2482,44 @@ const App = (() => {
   }
 
   /* ---------- init ---------- */
-  function init() {
+  // "Forgot password?" — ask for the email, request a reset link.
+  async function forgotPassword() {
+    const email = await promptDialog('Enter the email on your account and we will send a reset link.', {
+      title: 'Forgot password', ok: 'Send link', placeholder: 'you@example.com', type: 'email',
+    });
+    if (email === null) return; // cancelled
+    if (!email.trim()) return toast('Please enter your email');
+    try {
+      const r = await api('/auth/forgot', { method: 'POST', body: { email: email.trim() } });
+      toast(r.message || 'If that email is registered, a reset link has been sent.');
+    } catch (e) { toast(e.message); }
+  }
+
+  // If the app was opened from a reset link (/reset?token=…), let the user set a
+  // new password right away, then clean the URL and return to login.
+  async function handleResetLink() {
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token');
+    const isReset = location.pathname.replace(/\/$/, '').endsWith('/reset') || params.has('token');
+    if (!token || !isReset) return false;
+    $('auth-view').classList.remove('hidden');
+    const pass = await promptDialog('Choose a new password for your account.', {
+      title: 'Reset password', ok: 'Save password', placeholder: 'At least 4 characters', type: 'password',
+    });
+    // Strip the token from the address bar either way so it isn't reused/bookmarked.
+    history.replaceState(null, '', '/');
+    if (pass === null) return true;
+    if (!pass || pass.length < 4) { toast('Password must be at least 4 characters'); return true; }
+    try {
+      await api('/auth/reset', { method: 'POST', body: { token, password: pass } });
+      toast('Password updated — please log in with your new password.');
+    } catch (e) { toast(e.message); }
+    return true;
+  }
+
+  async function init() {
     startIconObserver(); // render <i data-lucide> placeholders into SVG icons
+    if (await handleResetLink()) return; // opened via a password-reset link
     if (token && user) { boot(); }
     else { $('auth-view').classList.remove('hidden'); }
   }
@@ -2491,7 +2527,7 @@ const App = (() => {
   // Note: detect/submitFarm/submitCrop/submitUpdate/addPrice/broadcast/saveExpert/
   // toggleUser live on the `screens` object, so expose them via thin wrappers.
   return {
-    login, register, onRoleChange, toggleAuth, logout, go, sendMsg, openExpertChat, init, togglePw,
+    login, register, onRoleChange, toggleAuth, logout, go, sendMsg, openExpertChat, init, togglePw, forgotPassword,
     filterExperts, toggleSelectExpert, clearExpertSel, deleteSelectedExperts,
     detect: (...a) => screens.detect(...a),
     submitFarm: (...a) => screens.submitFarm(...a),
