@@ -261,6 +261,15 @@ const App = (() => {
     $('user-tag').style.cursor = 'pointer';
     $('user-tag').onclick = () => go('myProfile'); // tap your name -> profile
     renderNav();
+    // Google sign-in only gives us a name + email, so a farmer can land here with
+    // no ward/phone — which breaks ward analytics, outbreak alerts and subsidies.
+    // Make them finish the essentials before using the app.
+    if (user.role === 'farmer' && !user.ward) {
+      $('bottom-nav').classList.add('hidden');
+      go('completeProfile');
+      return;
+    }
+    $('bottom-nav').classList.remove('hidden');
     if (user.role === 'super_admin') go('admin');
     else if (user.role === 'expert') go('threads');
     else go('home');
@@ -1298,6 +1307,51 @@ const App = (() => {
 
     /* ============ PROFILE ============ */
     /* My profile — view + edit own account (every user has one). */
+    /* One-time onboarding for accounts created via Google (or any farmer missing a
+       ward). No back button and the nav is hidden — ward is required to continue. */
+    async completeProfile() {
+      const { user: u } = await api('/users/me');
+      $('screen').innerHTML = `
+        <div class="panel">
+          <h2>${icon('user-round-cog')} Complete your profile</h2>
+          <p class="muted">Welcome${u.name ? ', ' + esc(u.name) : ''}! We need a few details so the
+            Nagarpalika knows which ward you farm in — this powers local weather, subsidies and disease alerts.</p>
+          <label class="muted" style="display:block;margin:8px 0 2px">Your name *</label>
+          <input id="cp-name" placeholder="Full name" value="${esc(u.name || '')}"/>
+          <label class="muted" style="display:block;margin:4px 0 2px">🏘️ Ward (Taplejung Nagarpalika) *</label>
+          <select id="cp-ward">
+            <option value="">Select your Ward</option>
+            ${Array.from({ length: 11 }, (_, i) => i + 1).map((w) => `<option value="${w}" ${Number(u.ward) === w ? 'selected' : ''}>Ward No. ${w}</option>`).join('')}
+          </select>
+          <label class="muted" style="display:block;margin:4px 0 2px">Phone number *</label>
+          <input id="cp-phone" type="tel" placeholder="98XXXXXXXX" value="${esc(u.phone || '')}"/>
+          <label class="muted" style="display:block;margin:4px 0 2px">Address / Tole (optional)</label>
+          <input id="cp-address" placeholder="e.g. Phungling" value="${esc(u.address || '')}"/>
+          <p class="error" id="cp-err"></p>
+          <button class="btn" style="margin-top:6px" onclick="App.saveCompleteProfile()">Save and continue</button>
+          <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px" onclick="App.logout()">Sign out</button>
+        </div>`;
+    },
+    async saveCompleteProfile() {
+      const err = $('cp-err'); err.textContent = '';
+      const name = $('cp-name').value.trim();
+      const ward = $('cp-ward').value;
+      const phone = $('cp-phone').value.trim();
+      if (!name) { err.textContent = 'Please enter your name.'; return; }
+      if (!ward) { err.textContent = 'Please select your ward.'; return; }
+      if (!/^\d{7,15}$/.test(phone)) { err.textContent = 'Please enter a valid phone number (digits only).'; return; }
+      try {
+        const { user: updated } = await api('/users/' + user.id, {
+          method: 'PATCH',
+          body: { name, ward: Number(ward), phone, address: $('cp-address').value.trim() },
+        });
+        user = { ...user, name: updated.name, ward: updated.ward, phone: updated.phone };
+        localStorage.setItem('ks_user', JSON.stringify(user));
+        toast('Profile saved — welcome to Kisan Sathi!');
+        boot(); // nav returns and the farmer lands on Home
+      } catch (e) { err.textContent = e.message; }
+    },
+
     async myProfile() {
       const { user: u } = await api('/users/me');
       const back = user.role === 'super_admin' ? 'admin' : user.role === 'expert' ? 'threads' : 'home';
@@ -2627,6 +2681,7 @@ const App = (() => {
     openNotif: (...a) => screens.openNotif(...a),
     previewAvatar: (...a) => screens.previewAvatar(...a),
     saveProfile: (...a) => screens.saveProfile(...a),
+    saveCompleteProfile: (...a) => screens.saveCompleteProfile(...a),
     changePassword: (...a) => screens.changePassword(...a),
     openUserProfile: (...a) => screens.openUserProfile(...a),
     askAi: (...a) => screens.askAi(...a),

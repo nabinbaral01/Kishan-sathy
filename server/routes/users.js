@@ -94,7 +94,15 @@ router.patch('/:id', authRequired, async (req, res) => {
   if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
 
   values.push(id);
-  await run(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
+  try {
+    await run(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
+  } catch (err) {
+    // phone/email are UNIQUE — report the clash instead of a raw 500.
+    if (String(err.message).includes('UNIQUE')) {
+      return res.status(409).json({ error: 'That phone or email is already used by another account.' });
+    }
+    throw err;
+  }
   const user = await get(`SELECT ${PUBLIC_USER} FROM users WHERE id = ?`, [id]);
   res.json({ user });
 });
