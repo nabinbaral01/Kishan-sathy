@@ -77,6 +77,25 @@ router.post('/forgot', async (req, res) => {
 });
 
 /**
+ * Send the one-time welcome email. Deliberately never throws: a signup must
+ * succeed even when email is unconfigured or the provider rejects the address
+ * (e.g. Resend's test sender only delivers to the account owner).
+ */
+async function sendWelcome(user, req) {
+  if (!user || !user.email || !emailer.isEnabled()) return;
+  const base = (process.env.PUBLIC_BASE_URL || `https://${req.headers.host}`).replace(/\/$/, '');
+  try {
+    await emailer.sendEmail({
+      to: user.email,
+      subject: 'Thank you for joining Kisan Sathi 🌾',
+      html: emailer.welcomeEmailHtml(user.name, base),
+    });
+  } catch (e) {
+    console.warn('welcome email skipped:', e.message);
+  }
+}
+
+/**
  * Validate an emailed OTP for `email` WITHOUT consuming it.
  * Returns { row } when the code is good, otherwise { status, error }.
  * A wrong guess burns one of the 5 attempts.
@@ -180,6 +199,7 @@ router.post('/register', async (req, res) => {
     const user = await get(`SELECT ${PUBLIC_USER} FROM users WHERE id = ?`, [
       info.lastInsertRowid,
     ]);
+    await sendWelcome(user, req); // no-op when they signed up with a phone only
     const token = signToken(user);
     res.status(201).json({ token, user });
   } catch (err) {
@@ -231,6 +251,7 @@ router.post('/google', async (req, res) => {
       [payload.name || email.split('@')[0], email, randomHash]
     );
     user = await get(`SELECT * FROM users WHERE id = ?`, [info.lastInsertRowid]);
+    await sendWelcome(user, req); // first sign-in with this email -> welcome them
   }
   if (!user.active) return res.status(403).json({ error: 'Account disabled. Contact admin.' });
 
