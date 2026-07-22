@@ -1335,7 +1335,7 @@ const App = (() => {
           <div id="cp-palika-box"></div>
 
           <label class="muted" style="display:block;margin:4px 0 2px">Ward number *</label>
-          <input id="cp-ward" type="number" min="1" max="33" placeholder="e.g. 2" value="${u.ward != null ? u.ward : ''}"/>
+          <div id="cp-ward-box"></div>
 
           <label class="muted" style="display:block;margin:4px 0 2px">📞 Phone number *</label>
           <input id="cp-phone" type="tel" placeholder="98XXXXXXXX" value="${esc(u.phone || '')}"/>
@@ -1352,10 +1352,13 @@ const App = (() => {
         </div>`;
       renderCpDistricts(u.district || '');
       renderCpPalika(u.palika || '');
+      renderCpWard(u.ward != null ? String(u.ward) : '');
     },
-    // Province changed -> reload its districts and reset the palika field.
-    cpProvinceChange() { ctx.cpDistrict = ''; renderCpDistricts(''); renderCpPalika(''); },
-    cpDistrictChange() { renderCpPalika(''); },
+    // Province changed -> reload its districts, and reset palika + ward below it.
+    cpProvinceChange() { ctx.cpDistrict = ''; renderCpDistricts(''); renderCpPalika(''); renderCpWard(''); },
+    cpDistrictChange() { renderCpPalika(''); renderCpWard(''); },
+    // Palika changed -> the ward list depends on it (e.g. Phungling has 11).
+    cpPalikaChange() { renderCpWard(''); },
     async saveCompleteProfile() {
       const err = $('cp-err'); err.textContent = '';
       const name = $('cp-name').value.trim();
@@ -2207,6 +2210,12 @@ const App = (() => {
   const PALIKAS = {
     Taplejung: ['Phungling Municipality', 'Aathrai Tribeni', 'Maiwakhola', 'Meringden', 'Mikwakhola', 'Phaktanglung', 'Sidingba', 'Sirijangha', 'Yangwarak'],
   };
+  // How many wards each local unit has, so the ward dropdown only offers real
+  // options. Anything not listed falls back to a free number box (1–33) rather
+  // than showing a made-up range.
+  const PALIKA_WARDS = {
+    'Phungling Municipality': 11,
+  };
 
   const MAX_POST_IMAGES = 6;
 
@@ -2226,12 +2235,30 @@ const App = (() => {
     const district = ($('cp-district') || {}).value || '';
     const known = PALIKAS[district];
     if (known) {
-      box.innerHTML = `<select id="cp-palika"><option value="">Select palika</option>`
+      box.innerHTML = `<select id="cp-palika" onchange="App.cpPalikaChange()"><option value="">Select palika</option>`
         + known.map((p) => `<option value="${esc(p)}" ${p === selected ? 'selected' : ''}>${esc(p)}</option>`).join('')
         + `</select>`;
     } else {
-      box.innerHTML = `<input id="cp-palika" placeholder="${district ? 'Type your palika / municipality' : 'Select a district first'}"
+      box.innerHTML = `<input id="cp-palika" onchange="App.cpPalikaChange()"
+        placeholder="${district ? 'Type your palika / municipality' : 'Select a district first'}"
         value="${esc(selected)}" ${district ? '' : 'disabled'}/>`;
+    }
+  }
+  /* Ward options come from the chosen palika — each local unit has its own ward
+     count (Phungling has 11). Unknown palikas get a plain number box. */
+  function renderCpWard(selected) {
+    const box = $('cp-ward-box'); if (!box) return;
+    const palika = ($('cp-palika') || {}).value || '';
+    const count = PALIKA_WARDS[palika];
+    if (count) {
+      box.innerHTML = `<select id="cp-ward"><option value="">Select ward (1–${count})</option>`
+        + Array.from({ length: count }, (_, i) => i + 1)
+            .map((w) => `<option value="${w}" ${String(w) === String(selected) ? 'selected' : ''}>Ward No. ${w}</option>`).join('')
+        + `</select>`;
+    } else {
+      box.innerHTML = `<input id="cp-ward" type="number" min="1" max="33"
+        placeholder="${palika ? 'Enter your ward number' : 'Select a palika first'}"
+        value="${esc(selected)}" ${palika ? '' : 'disabled'}/>`;
     }
   }
 
@@ -2760,6 +2787,7 @@ const App = (() => {
     saveCompleteProfile: (...a) => screens.saveCompleteProfile(...a),
     cpProvinceChange: (...a) => screens.cpProvinceChange(...a),
     cpDistrictChange: (...a) => screens.cpDistrictChange(...a),
+    cpPalikaChange: (...a) => screens.cpPalikaChange(...a),
     changePassword: (...a) => screens.changePassword(...a),
     openUserProfile: (...a) => screens.openUserProfile(...a),
     askAi: (...a) => screens.askAi(...a),
