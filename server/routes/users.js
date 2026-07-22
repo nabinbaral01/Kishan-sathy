@@ -3,17 +3,39 @@
  */
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { get, all, run } = require('../db');
+const { get, all, run, exec } = require('../db');
 const { authRequired, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
-const PUBLIC_USER = 'id, name, role, phone, email, language, ward, active, created_at';
+
+const GENDERS = ['male', 'female', 'other'];
+
+// Address/gender columns were added after launch. Production skips the global
+// schema init, so make sure they exist the first time this route is used.
+let profileColsReady = null;
+function ensureProfileColumns() {
+  if (!profileColsReady) {
+    profileColsReady = (async () => {
+      const cols = await all(`PRAGMA table_info(users)`);
+      const has = (n) => cols.some((c) => c.name === n);
+      if (!has('province')) await exec(`ALTER TABLE users ADD COLUMN province TEXT`);
+      if (!has('district')) await exec(`ALTER TABLE users ADD COLUMN district TEXT`);
+      if (!has('palika')) await exec(`ALTER TABLE users ADD COLUMN palika TEXT`);
+      if (!has('gender')) await exec(`ALTER TABLE users ADD COLUMN gender TEXT`);
+    })();
+  }
+  return profileColsReady;
+}
+router.use(async (_req, _res, next) => {
+  try { await ensureProfileColumns(); next(); } catch (e) { next(e); }
+});
+const PUBLIC_USER = 'id, name, role, phone, email, language, ward, province, district, palika, gender, active, created_at';
 // Non-sensitive public profile fields (never password_hash).
 const PROFILE = 'id, name, role, phone, bio, address, ward, avatar, created_at';
 
 /** GET /api/users/me -> the logged-in user's own profile (editable fields). */
 router.get('/me', authRequired, async (req, res) => {
-  const user = await get(`SELECT id, name, role, phone, email, language, ward, bio, address, avatar, show_contact, created_at FROM users WHERE id = ?`, [req.user.id]);
+  const user = await get(`SELECT id, name, role, phone, email, language, ward, province, district, palika, gender, bio, address, avatar, show_contact, created_at FROM users WHERE id = ?`, [req.user.id]);
   res.json({ user });
 });
 
@@ -75,7 +97,7 @@ router.patch('/:id', authRequired, async (req, res) => {
   if (req.user.role !== 'super_admin' && req.user.id !== id) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  const { name, phone, email, language, password, bio, address, avatar, ward } = req.body || {};
+  const { name, phone, email, language, password, bio, address, avatar, ward, province, district, palika, gender } = req.body || {};
   const fields = [];
   const values = [];
   if (name !== undefined) { fields.push('name = ?'); values.push(name); }
@@ -83,8 +105,16 @@ router.patch('/:id', authRequired, async (req, res) => {
   if (email !== undefined) { fields.push('email = ?'); values.push(email); }
   if (language !== undefined) { fields.push('language = ?'); values.push(language); }
   if (ward !== undefined) {
+    // Nepali local units run up to 33 wards, so don't cap at Taplejung's 11.
     const w = Number(ward);
-    fields.push('ward = ?'); values.push(w >= 1 && w <= 11 ? w : null);
+    fields.push('ward = ?'); values.push(w >= 1 && w <= 33 ? w : null);
+  }
+  if (province !== undefined) { fields.push('province = ?'); values.push((province || '').trim() || null); }
+  if (district !== undefined) { fields.push('district = ?'); values.push((district || '').trim() || null); }
+  if (palika !== undefined) { fields.push('palika = ?'); values.push((palika || '').trim() || null); }
+  if (gender !== undefined) {
+    const g = String(gender || '').toLowerCase();
+    fields.push('gender = ?'); values.push(GENDERS.includes(g) ? g : null);
   }
   if (bio !== undefined) { fields.push('bio = ?'); values.push(bio); }
   if (address !== undefined) { fields.push('address = ?'); values.push(address); }

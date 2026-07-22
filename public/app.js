@@ -1311,39 +1311,74 @@ const App = (() => {
        ward). No back button and the nav is hidden — ward is required to continue. */
     async completeProfile() {
       const { user: u } = await api('/users/me');
+      ctx.cpProvince = u.province || '';
+      ctx.cpDistrict = u.district || '';
       $('screen').innerHTML = `
         <div class="panel">
           <h2>${icon('user-round-cog')} Complete your profile</h2>
-          <p class="muted">Welcome${u.name ? ', ' + esc(u.name) : ''}! We need a few details so the
-            Nagarpalika knows which ward you farm in — this powers local weather, subsidies and disease alerts.</p>
+          <p class="muted">Welcome${u.name ? ', ' + esc(u.name) : ''}! Tell us where you farm so the
+            Nagarpalika can reach you — this powers local weather, subsidies and disease alerts.</p>
+
           <label class="muted" style="display:block;margin:8px 0 2px">Your name *</label>
           <input id="cp-name" placeholder="Full name" value="${esc(u.name || '')}"/>
-          <label class="muted" style="display:block;margin:4px 0 2px">🏘️ Ward (Taplejung Nagarpalika) *</label>
-          <select id="cp-ward">
-            <option value="">Select your Ward</option>
-            ${Array.from({ length: 11 }, (_, i) => i + 1).map((w) => `<option value="${w}" ${Number(u.ward) === w ? 'selected' : ''}>Ward No. ${w}</option>`).join('')}
+
+          <label class="muted" style="display:block;margin:4px 0 2px">🏔️ Province *</label>
+          <select id="cp-province" onchange="App.cpProvinceChange()">
+            <option value="">Select province</option>
+            ${Object.keys(NEPAL).map((p) => `<option value="${esc(p)}" ${u.province === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}
           </select>
-          <label class="muted" style="display:block;margin:4px 0 2px">Phone number *</label>
+
+          <label class="muted" style="display:block;margin:4px 0 2px">📍 District *</label>
+          <select id="cp-district" onchange="App.cpDistrictChange()"></select>
+
+          <label class="muted" style="display:block;margin:4px 0 2px">🏘️ Palika / Municipality *</label>
+          <div id="cp-palika-box"></div>
+
+          <label class="muted" style="display:block;margin:4px 0 2px">Ward number *</label>
+          <input id="cp-ward" type="number" min="1" max="33" placeholder="e.g. 2" value="${u.ward != null ? u.ward : ''}"/>
+
+          <label class="muted" style="display:block;margin:4px 0 2px">📞 Phone number *</label>
           <input id="cp-phone" type="tel" placeholder="98XXXXXXXX" value="${esc(u.phone || '')}"/>
-          <label class="muted" style="display:block;margin:4px 0 2px">Address / Tole (optional)</label>
-          <input id="cp-address" placeholder="e.g. Phungling" value="${esc(u.address || '')}"/>
+
+          <label class="muted" style="display:block;margin:4px 0 2px">Gender *</label>
+          <select id="cp-gender">
+            <option value="">Select gender</option>
+            ${[['male', 'Male'], ['female', 'Female'], ['other', 'Other']].map(([v, l]) => `<option value="${v}" ${u.gender === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+
           <p class="error" id="cp-err"></p>
-          <button class="btn" style="margin-top:6px" onclick="App.saveCompleteProfile()">Save and continue</button>
+          <button class="btn" style="margin-top:6px" onclick="App.saveCompleteProfile()">Next ${icon('chevron-right')}</button>
           <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px" onclick="App.logout()">Sign out</button>
         </div>`;
+      renderCpDistricts(u.district || '');
+      renderCpPalika(u.palika || '');
     },
+    // Province changed -> reload its districts and reset the palika field.
+    cpProvinceChange() { ctx.cpDistrict = ''; renderCpDistricts(''); renderCpPalika(''); },
+    cpDistrictChange() { renderCpPalika(''); },
     async saveCompleteProfile() {
       const err = $('cp-err'); err.textContent = '';
       const name = $('cp-name').value.trim();
-      const ward = $('cp-ward').value;
+      const province = $('cp-province').value;
+      const district = $('cp-district').value;
+      const palikaEl = $('cp-palika');
+      const palika = palikaEl ? palikaEl.value.trim() : '';
+      const ward = Number($('cp-ward').value);
       const phone = $('cp-phone').value.trim();
-      if (!name) { err.textContent = 'Please enter your name.'; return; }
-      if (!ward) { err.textContent = 'Please select your ward.'; return; }
-      if (!/^\d{7,15}$/.test(phone)) { err.textContent = 'Please enter a valid phone number (digits only).'; return; }
+      const gender = $('cp-gender').value;
+
+      if (!name) return (err.textContent = 'Please enter your name.');
+      if (!province) return (err.textContent = 'Please select your province.');
+      if (!district) return (err.textContent = 'Please select your district.');
+      if (!palika) return (err.textContent = 'Please select or type your palika / municipality.');
+      if (!(ward >= 1 && ward <= 33)) return (err.textContent = 'Please enter a valid ward number (1–33).');
+      if (!/^\d{7,15}$/.test(phone)) return (err.textContent = 'Please enter a valid phone number (digits only).');
+      if (!gender) return (err.textContent = 'Please select your gender.');
+
       try {
         const { user: updated } = await api('/users/' + user.id, {
           method: 'PATCH',
-          body: { name, ward: Number(ward), phone, address: $('cp-address').value.trim() },
+          body: { name, province, district, palika, ward, phone, gender },
         });
         user = { ...user, name: updated.name, ward: updated.ward, phone: updated.phone };
         localStorage.setItem('ks_user', JSON.stringify(user));
@@ -2157,7 +2192,48 @@ const App = (() => {
       ${!admin && s.status === 'pending' ? `<button class="btn btn-sm btn-ghost" style="margin-top:8px" onclick="App.deleteSubsidy(${s.id})">Cancel request</button>` : ''}
     </div>`;
   }
+  // Nepal's 7 provinces and their 77 districts (used by the onboarding form).
+  const NEPAL = {
+    Koshi: ['Bhojpur', 'Dhankuta', 'Ilam', 'Jhapa', 'Khotang', 'Morang', 'Okhaldhunga', 'Panchthar', 'Sankhuwasabha', 'Solukhumbu', 'Sunsari', 'Taplejung', 'Terhathum', 'Udayapur'],
+    Madhesh: ['Bara', 'Dhanusha', 'Mahottari', 'Parsa', 'Rautahat', 'Saptari', 'Sarlahi', 'Siraha'],
+    Bagmati: ['Bhaktapur', 'Chitwan', 'Dhading', 'Dolakha', 'Kathmandu', 'Kavrepalanchok', 'Lalitpur', 'Makwanpur', 'Nuwakot', 'Ramechhap', 'Rasuwa', 'Sindhuli', 'Sindhupalchok'],
+    Gandaki: ['Baglung', 'Gorkha', 'Kaski', 'Lamjung', 'Manang', 'Mustang', 'Myagdi', 'Nawalpur', 'Parbat', 'Syangja', 'Tanahun'],
+    Lumbini: ['Arghakhanchi', 'Banke', 'Bardiya', 'Dang', 'Gulmi', 'Kapilvastu', 'Palpa', 'Parasi', 'Pyuthan', 'Rolpa', 'Rukum East', 'Rupandehi'],
+    Karnali: ['Dailekh', 'Dolpa', 'Humla', 'Jajarkot', 'Jumla', 'Kalikot', 'Mugu', 'Rukum West', 'Salyan', 'Surkhet'],
+    Sudurpashchim: ['Achham', 'Baitadi', 'Bajhang', 'Bajura', 'Dadeldhura', 'Darchula', 'Doti', 'Kailali', 'Kanchanpur'],
+  };
+  // Local units we list explicitly. Taplejung is the municipality this app serves,
+  // so its 9 palikas are offered as a dropdown; elsewhere the farmer types theirs.
+  const PALIKAS = {
+    Taplejung: ['Phungling Municipality', 'Aathrai Tribeni', 'Maiwakhola', 'Meringden', 'Mikwakhola', 'Phaktanglung', 'Sidingba', 'Sirijangha', 'Yangwarak'],
+  };
+
   const MAX_POST_IMAGES = 6;
+
+  /* Onboarding cascade: districts follow the chosen province, and the palika
+     field follows the district — a dropdown where we have verified data
+     (Taplejung), otherwise a free-text box so nothing is invented. */
+  function renderCpDistricts(selected) {
+    const sel = $('cp-district'); if (!sel) return;
+    const province = ($('cp-province') || {}).value || '';
+    const list = NEPAL[province] || [];
+    sel.innerHTML = `<option value="">${province ? 'Select district' : 'Select a province first'}</option>`
+      + list.map((d) => `<option value="${esc(d)}" ${d === selected ? 'selected' : ''}>${esc(d)}</option>`).join('');
+    sel.disabled = !list.length;
+  }
+  function renderCpPalika(selected) {
+    const box = $('cp-palika-box'); if (!box) return;
+    const district = ($('cp-district') || {}).value || '';
+    const known = PALIKAS[district];
+    if (known) {
+      box.innerHTML = `<select id="cp-palika"><option value="">Select palika</option>`
+        + known.map((p) => `<option value="${esc(p)}" ${p === selected ? 'selected' : ''}>${esc(p)}</option>`).join('')
+        + `</select>`;
+    } else {
+      box.innerHTML = `<input id="cp-palika" placeholder="${district ? 'Type your palika / municipality' : 'Select a district first'}"
+        value="${esc(selected)}" ${district ? '' : 'disabled'}/>`;
+    }
+  }
 
   // Rebuild just the composer's photo strip (never the whole screen, so text
   // already typed into the box isn't wiped). Each thumb has a ✕ to drop it.
@@ -2682,6 +2758,8 @@ const App = (() => {
     previewAvatar: (...a) => screens.previewAvatar(...a),
     saveProfile: (...a) => screens.saveProfile(...a),
     saveCompleteProfile: (...a) => screens.saveCompleteProfile(...a),
+    cpProvinceChange: (...a) => screens.cpProvinceChange(...a),
+    cpDistrictChange: (...a) => screens.cpDistrictChange(...a),
     changePassword: (...a) => screens.changePassword(...a),
     openUserProfile: (...a) => screens.openUserProfile(...a),
     askAi: (...a) => screens.askAi(...a),
