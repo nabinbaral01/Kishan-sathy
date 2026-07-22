@@ -4,7 +4,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { get, run, exec } = require('../db');
+const { get, all, run, exec } = require('../db');
 const { signToken, authRequired } = require('../middleware/auth');
 const emailer = require('../email');
 
@@ -17,13 +17,20 @@ const PUBLIC_USER = 'id, name, role, phone, email, language, ward, active, creat
 let resetReady = null;
 function ensureResetTable() {
   if (!resetReady) {
-    resetReady = exec(`CREATE TABLE IF NOT EXISTS password_resets (
-      token      TEXT PRIMARY KEY,
-      user_id    INTEGER NOT NULL,
-      expires_at TEXT NOT NULL,
-      used       INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )`);
+    resetReady = (async () => {
+      await exec(`CREATE TABLE IF NOT EXISTS password_resets (
+        token      TEXT PRIMARY KEY,
+        user_id    INTEGER NOT NULL,
+        expires_at TEXT NOT NULL,
+        used       INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`);
+      // OTP support added after the link-based flow — migrate existing tables.
+      const cols = await all(`PRAGMA table_info(password_resets)`);
+      const has = (n) => cols.some((c) => c.name === n);
+      if (!has('code')) await exec(`ALTER TABLE password_resets ADD COLUMN code TEXT`);
+      if (!has('attempts')) await exec(`ALTER TABLE password_resets ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`);
+    })();
   }
   return resetReady;
 }
@@ -45,34 +52,73 @@ router.post('/forgot', async (req, res) => {
     return res.status(503).json({ error: 'Email is not set up yet. Please ask the Nagarpalika admin to reset your password.' });
   }
 
-  const token = crypto.randomBytes(32).toString('hex');
-  const expires = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
-  await run(`INSERT INTO password_resets (token, user_id, expires_at) VALUES (?,?,?)`, [token, user.id, expires]);
+  // Any earlier code for this user stops working the moment a new one is sent.
+  await run(`UPDATE password_resets SET used = 1 WHERE user_id = ? AND used = 0`, [user.id]);
 
-  const base = (process.env.PUBLIC_BASE_URL || `https://${req.headers.host}`).replace(/\/$/, '');
-  const link = `${base}/reset?token=${token}`;
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0'); // 6-digit OTP
+  const token = crypto.randomBytes(16).toString('hex');               // row id
+  const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+  await run(
+    `INSERT INTO password_resets (token, user_id, code, expires_at) VALUES (?,?,?,?)`,
+    [token, user.id, code, expires]
+  );
+
   try {
-    await emailer.sendEmail({ to: user.email, subject: 'Reset your Kisan Sathi password', html: emailer.resetEmailHtml(user.name, link) });
+    await emailer.sendEmail({
+      to: user.email,
+      subject: `${code} is your Kisan Sathi password reset code`,
+      html: emailer.resetCodeEmailHtml(user.name, code),
+    });
   } catch (e) {
     console.error('reset email failed:', e.message);
     return res.status(502).json({ error: 'Could not send the email right now. Please try again shortly.' });
   }
-  res.json(genericOk);
+  res.json({ ok: true, message: 'If that email is registered, a 6-digit code has been sent.' });
 });
 
-/** POST /api/auth/reset { token, password } — set a new password from a valid link. */
+/**
+ * POST /api/auth/reset — set a new password.
+ * OTP flow:  { email, code, password }
+ * Link flow: { token, password }   (kept for reset links)
+ */
 router.post('/reset', async (req, res) => {
   await ensureResetTable();
-  const { token, password } = req.body || {};
-  if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
+  const { token, email, code, password } = req.body || {};
+  if (!password) return res.status(400).json({ error: 'password is required' });
   if (String(password).length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
 
-  const row = await get(`SELECT * FROM password_resets WHERE token = ?`, [token]);
-  if (!row || row.used || new Date(row.expires_at) < new Date()) {
-    return res.status(400).json({ error: 'This reset link is invalid or has expired. Please request a new one.' });
+  const expired = (r) => !r || r.used || new Date(r.expires_at) < new Date();
+  let row;
+
+  if (token) {
+    row = await get(`SELECT * FROM password_resets WHERE token = ?`, [token]);
+    if (expired(row)) return res.status(400).json({ error: 'This reset link is invalid or has expired. Please request a new one.' });
+  } else {
+    const mail = (email || '').trim().toLowerCase();
+    const otp = String(code || '').trim();
+    if (!mail || !otp) return res.status(400).json({ error: 'email and code are required' });
+
+    const user = await get(`SELECT id FROM users WHERE lower(email) = ?`, [mail]);
+    if (!user) return res.status(400).json({ error: 'That code is not valid. Please request a new one.' });
+
+    row = await get(
+      `SELECT * FROM password_resets WHERE user_id = ? AND used = 0 ORDER BY created_at DESC LIMIT 1`,
+      [user.id]
+    );
+    if (expired(row)) return res.status(400).json({ error: 'That code has expired. Please request a new one.' });
+    // Throttle guessing: 5 wrong tries burns the code.
+    if (row.attempts >= 5) {
+      await run(`UPDATE password_resets SET used = 1 WHERE token = ?`, [row.token]);
+      return res.status(429).json({ error: 'Too many wrong attempts. Please request a new code.' });
+    }
+    if (String(row.code) !== otp) {
+      await run(`UPDATE password_resets SET attempts = attempts + 1 WHERE token = ?`, [row.token]);
+      return res.status(400).json({ error: `Incorrect code. ${4 - row.attempts} attempt(s) left.` });
+    }
   }
+
   await run(`UPDATE users SET password_hash = ? WHERE id = ?`, [bcrypt.hashSync(password, 10), row.user_id]);
-  await run(`UPDATE password_resets SET used = 1 WHERE token = ?`, [token]);
+  await run(`UPDATE password_resets SET used = 1 WHERE token = ?`, [row.token]);
   res.json({ ok: true });
 });
 

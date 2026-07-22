@@ -2511,17 +2511,42 @@ const App = (() => {
   }
 
   /* ---------- init ---------- */
-  // "Forgot password?" — ask for the email, request a reset link.
+  // "Forgot password?" — email a 6-digit code, then take the code + new password.
   async function forgotPassword() {
-    const email = await promptDialog('Enter the email on your account and we will send a reset link.', {
-      title: 'Forgot password', ok: 'Send link', placeholder: 'you@example.com', type: 'email',
+    const raw = await promptDialog('Enter the email on your account and we will send you a 6-digit code.', {
+      title: 'Forgot password', ok: 'Send code', placeholder: 'you@example.com', type: 'email',
     });
-    if (email === null) return; // cancelled
-    if (!email.trim()) return toast('Please enter your email');
+    if (raw === null) return; // cancelled
+    const email = (raw || '').trim();
+    if (!email) return toast('Please enter your email');
+
     try {
-      const r = await api('/auth/forgot', { method: 'POST', body: { email: email.trim() } });
-      toast(r.message || 'If that email is registered, a reset link has been sent.');
-    } catch (e) { toast(e.message); }
+      const r = await api('/auth/forgot', { method: 'POST', body: { email } });
+      toast(r.message || 'If that email is registered, a code has been sent.');
+    } catch (e) { return toast(e.message); }
+
+    // Let them retry the code without restarting the whole flow.
+    for (;;) {
+      const code = await promptDialog(`Enter the 6-digit code we emailed to ${email}.`, {
+        title: 'Enter code', ok: 'Verify', placeholder: '123456',
+      });
+      if (code === null) return;
+      if (!code.trim()) { toast('Please enter the code'); continue; }
+
+      const pass = await promptDialog('Choose a new password for your account.', {
+        title: 'New password', ok: 'Save password', placeholder: 'At least 4 characters', type: 'password',
+      });
+      if (pass === null) return;
+      if (!pass || pass.length < 4) { toast('Password must be at least 4 characters'); continue; }
+
+      try {
+        await api('/auth/reset', { method: 'POST', body: { email, code: code.trim(), password: pass } });
+        return toast('Password updated — please log in with your new password.');
+      } catch (e) {
+        toast(e.message);
+        if (!/incorrect code/i.test(e.message || '')) return; // expired/too many -> stop
+      }
+    }
   }
 
   // If the app was opened from a reset link (/reset?token=…), let the user set a

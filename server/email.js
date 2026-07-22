@@ -41,4 +41,20 @@ function resetEmailHtml(name, link) {
   </div>`;
 }
 
-module.exports = { isEnabled, sendEmail, resetEmailHtml };
+/** Branded HTML for the 6-digit password-reset code email. */
+function resetCodeEmailHtml(name, code) {
+  return `
+  <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1c2b1c">
+    <h2 style="color:#2e7d32;margin:0 0 4px">🌾 Kisan Sathi</h2>
+    <p>Hello ${name || 'there'},</p>
+    <p>Use this code to reset your Kisan Sathi password:</p>
+    <p style="text-align:center;margin:24px 0">
+      <span style="display:inline-block;background:#eef5ee;border:1px solid #2e7d32;color:#1b5e20;
+        font-size:32px;font-weight:bold;letter-spacing:10px;padding:14px 24px;border-radius:12px">${code}</span>
+    </p>
+    <p style="font-size:13px;color:#61706a">This code expires in <strong>10 minutes</strong> and can be used once.</p>
+    <p style="font-size:13px;color:#61706a">If you didn't request this, ignore this email — your password stays the same. Never share this code with anyone.</p>
+  </div>`;
+}
+
+module.exports = { isEnabled, sendEmail, resetEmailHtml, resetCodeEmailHtml };
