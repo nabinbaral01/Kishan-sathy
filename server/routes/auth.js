@@ -71,6 +71,13 @@ router.post('/forgot', async (req, res) => {
     });
   } catch (e) {
     console.error('reset email failed:', e.message);
+    if (e.code === 'EMAIL_TEST_MODE') {
+      // Sending isn't fully set up yet — don't tell the farmer to "try again",
+      // that will never work. Point them somewhere that does.
+      return res.status(503).json({
+        error: 'Email delivery is not fully set up yet, so we cannot send a code to this address. Please ask the Nagarpalika admin to reset your password.',
+      });
+    }
     return res.status(502).json({ error: 'Could not send the email right now. Please try again shortly.' });
   }
   res.json({ ok: true, message: 'If that email is registered, a 6-digit code has been sent.' });

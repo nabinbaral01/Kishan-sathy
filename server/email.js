@@ -21,7 +21,14 @@ async function sendEmail({ to, subject, html }) {
     body: JSON.stringify({ from: FROM, to: Array.isArray(to) ? to : [to], subject, html }),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data?.message || data?.error?.message || `Email send failed (HTTP ${r.status})`);
+  if (!r.ok) {
+    const msg = data?.message || data?.error?.message || `Email send failed (HTTP ${r.status})`;
+    const err = new Error(msg);
+    // Resend's shared test sender only delivers to the account owner until a
+    // domain is verified. Flag it so callers can explain that clearly.
+    if (/only send testing emails|verify a domain/i.test(msg)) err.code = 'EMAIL_TEST_MODE';
+    throw err;
+  }
   return data;
 }
 
