@@ -4,13 +4,13 @@
 const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { get, all, run, exec } = require('../db');
+const { get, all, run, exec, ensureUserProfileColumns } = require('../db');
 const { signToken, authRequired } = require('../middleware/auth');
 const emailer = require('../email');
 
 const router = express.Router();
 
-const PUBLIC_USER = 'id, name, role, phone, email, language, ward, active, created_at';
+const PUBLIC_USER = 'id, name, role, phone, email, language, ward, province, district, palika, gender, active, created_at';
 
 // Password-reset tokens live in their own table; create it on first use so it
 // works in production (which skips the global schema init).
@@ -167,7 +167,8 @@ router.post('/reset', async (req, res) => {
 
 /** POST /api/auth/register  { name, role, phone, email, password, language, ward, specialization } */
 router.post('/register', async (req, res) => {
-  const { name, role, phone, email, password, language, ward, specialization, bio } = req.body || {};
+  const { name, role, phone, email, password, language, ward, specialization, bio,
+    province, district, palika, gender, address } = req.body || {};
 
   if (!name || !password) {
     return res.status(400).json({ error: 'name and password are required' });
@@ -179,14 +180,23 @@ router.post('/register', async (req, res) => {
   const finalRole = allowedRoles.includes(role) ? role : 'farmer';
 
   try {
+    await ensureUserProfileColumns();
     const hash = bcrypt.hashSync(password, 10);
-    // Ward only applies to farmers; store 1–11 if valid, else null.
+    // Address details only apply to farmers; wards run up to 33 in Nepal.
+    const isFarmer = finalRole === 'farmer';
     const wardNum = Number(ward);
-    const wardVal = finalRole === 'farmer' && wardNum >= 1 && wardNum <= 11 ? wardNum : null;
+    const wardVal = isFarmer && wardNum >= 1 && wardNum <= 33 ? wardNum : null;
+    const g = String(gender || '').toLowerCase();
     const info = await run(
-      `INSERT INTO users (name, role, phone, email, password_hash, language, ward)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [name, finalRole, phone || null, email || null, hash, language || 'en', wardVal]
+      `INSERT INTO users (name, role, phone, email, password_hash, language, ward,
+                          province, district, palika, gender, address)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [name, finalRole, phone || null, email || null, hash, language || 'en', wardVal,
+       isFarmer ? (province || '').trim() || null : null,
+       isFarmer ? (district || '').trim() || null : null,
+       isFarmer ? (palika || '').trim() || null : null,
+       ['male', 'female', 'other'].includes(g) ? g : null,
+       isFarmer ? (address || '').trim() || null : null]
     );
 
     if (finalRole === 'expert') {

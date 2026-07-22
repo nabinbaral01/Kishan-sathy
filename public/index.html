@@ -43,19 +43,18 @@
           <option value="farmer">👨‍🌾 Farmer</option>
           <option value="expert">🧑‍🔬 Agriculture Expert</option>
         </select>
-        <select id="reg-ward">
-          <option value="">🏘️ Select your Ward (Taplejung)</option>
-          <option value="1">Ward No. 1</option>
-          <option value="2">Ward No. 2</option>
-          <option value="3">Ward No. 3</option>
-          <option value="4">Ward No. 4</option>
-          <option value="5">Ward No. 5</option>
-          <option value="6">Ward No. 6</option>
-          <option value="7">Ward No. 7</option>
-          <option value="8">Ward No. 8</option>
-          <option value="9">Ward No. 9</option>
-          <option value="10">Ward No. 10</option>
-          <option value="11">Ward No. 11</option>
+        <div id="reg-address">
+          <select id="reg-province" onchange="App.regProvinceChange()"></select>
+          <select id="reg-district" onchange="App.regDistrictChange()"></select>
+          <select id="reg-palika" onchange="App.regPalikaChange()"></select>
+          <select id="reg-ward"></select>
+          <input id="reg-tole" placeholder="Tole / Village name (optional)" />
+        </div>
+        <select id="reg-gender">
+          <option value="">Select gender</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+          <option value="other">Other</option>
         </select>
         <div class="pw-wrap">
           <input id="reg-pass" type="password" placeholder="Password" />

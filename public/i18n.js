@@ -355,6 +355,9 @@
     'Please select your district.': 'कृपया जिल्ला छान्नुहोस्।',
     'Please select or type your palika / municipality.': 'कृपया पालिका छान्नुहोस्।',
     'Please select your gender.': 'कृपया लिङ्ग छान्नुहोस्।',
+    'Please select your ward.': 'कृपया वडा छान्नुहोस्।',
+    'Please select your palika / municipality.': 'कृपया पालिका छान्नुहोस्।',
+    'Tole / Village name (optional)': 'टोल / गाउँको नाम (वैकल्पिक)',
     'Please enter a valid phone number (digits only).': 'कृपया सही फोन नम्बर लेख्नुहोस् (अंक मात्र)।',
 
     // ---- password reset / OTP / Google ----

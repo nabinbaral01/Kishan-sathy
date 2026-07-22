@@ -3,31 +3,15 @@
  */
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { get, all, run, exec } = require('../db');
+const { get, all, run, ensureUserProfileColumns } = require('../db');
 const { authRequired, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
 const GENDERS = ['male', 'female', 'other'];
 
-// Address/gender columns were added after launch. Production skips the global
-// schema init, so make sure they exist the first time this route is used.
-let profileColsReady = null;
-function ensureProfileColumns() {
-  if (!profileColsReady) {
-    profileColsReady = (async () => {
-      const cols = await all(`PRAGMA table_info(users)`);
-      const has = (n) => cols.some((c) => c.name === n);
-      if (!has('province')) await exec(`ALTER TABLE users ADD COLUMN province TEXT`);
-      if (!has('district')) await exec(`ALTER TABLE users ADD COLUMN district TEXT`);
-      if (!has('palika')) await exec(`ALTER TABLE users ADD COLUMN palika TEXT`);
-      if (!has('gender')) await exec(`ALTER TABLE users ADD COLUMN gender TEXT`);
-    })();
-  }
-  return profileColsReady;
-}
 router.use(async (_req, _res, next) => {
-  try { await ensureProfileColumns(); next(); } catch (e) { next(e); }
+  try { await ensureUserProfileColumns(); next(); } catch (e) { next(e); }
 });
 const PUBLIC_USER = 'id, name, role, phone, email, language, ward, province, district, palika, gender, active, created_at';
 // Non-sensitive public profile fields (never password_hash).

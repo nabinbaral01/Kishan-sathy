@@ -414,6 +414,25 @@ async function initSchema() {
   await addColumnIfMissing('users', 'ward', 'INTEGER');
 }
 
+/**
+ * Address/gender columns on `users`, added after launch. Production skips
+ * initSchema(), so routes that read or write them call this first. Memoized.
+ */
+let profileColsPromise = null;
+function ensureUserProfileColumns() {
+  if (!profileColsPromise) {
+    profileColsPromise = (async () => {
+      const cols = await all(`PRAGMA table_info(users)`);
+      const has = (n) => cols.some((c) => c.name === n);
+      if (!has('province')) await exec(`ALTER TABLE users ADD COLUMN province TEXT`);
+      if (!has('district')) await exec(`ALTER TABLE users ADD COLUMN district TEXT`);
+      if (!has('palika')) await exec(`ALTER TABLE users ADD COLUMN palika TEXT`);
+      if (!has('gender')) await exec(`ALTER TABLE users ADD COLUMN gender TEXT`);
+    })();
+  }
+  return profileColsPromise;
+}
+
 let readyPromise = null;
 /**
  * Ensure the schema exists. Memoized so it only runs once per process.
@@ -427,4 +446,4 @@ function ensureReady() {
   return readyPromise;
 }
 
-module.exports = { client, get, all, run, exec, transaction, ensureReady, initSchema };
+module.exports = { client, get, all, run, exec, transaction, ensureReady, initSchema, ensureUserProfileColumns };

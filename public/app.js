@@ -214,23 +214,45 @@ const App = (() => {
     });
   }
 
-  // Ward only makes sense for farmers — hide it when registering as an expert.
+  // The address block only makes sense for farmers — hide it for experts.
   function onRoleChange() {
-    const wardEl = $('reg-ward');
-    if (wardEl) wardEl.classList.toggle('hidden', $('reg-role').value !== 'farmer');
+    const isFarmer = $('reg-role').value === 'farmer';
+    const box = $('reg-address');
+    if (box) box.classList.toggle('hidden', !isFarmer);
   }
   async function register() {
+    const err = $('reg-err'); err.textContent = '';
     const role = $('reg-role').value;
-    const ward = $('reg-ward').value;
-    if (role === 'farmer' && !ward) { $('reg-err').textContent = 'Please select your Ward (1–11).'; return; }
+    const isFarmer = role === 'farmer';
+    const province = ($('reg-province') || {}).value || '';
+    const district = ($('reg-district') || {}).value || '';
+    const palika = ($('reg-palika') || {}).value || '';
+    const ward = ($('reg-ward') || {}).value || '';
+    const gender = ($('reg-gender') || {}).value || '';
+
+    if (isFarmer) {
+      if (!province) return (err.textContent = 'Please select your province.');
+      if (!district) return (err.textContent = 'Please select your district.');
+      if (!palika) return (err.textContent = 'Please select your palika / municipality.');
+      if (!ward) return (err.textContent = 'Please select your ward.');
+    }
+    if (!gender) return (err.textContent = 'Please select your gender.');
+
     try {
       const data = await api('/auth/register', { method: 'POST', body: {
         name: $('reg-name').value.trim(), phone: $('reg-phone').value.trim(),
         email: $('reg-email').value.trim() || undefined, role,
-        ward: ward || undefined, password: $('reg-pass').value } });
+        password: $('reg-pass').value, gender,
+        province: province || undefined, district: district || undefined,
+        palika: palika || undefined, ward: ward || undefined,
+        address: ($('reg-tole') || {}).value.trim() || undefined } });
       setSession(data);
-    } catch (e) { $('reg-err').textContent = e.message; }
+    } catch (e) { err.textContent = e.message; }
   }
+  // Cascade handlers for the register form.
+  function regProvinceChange() { addrProvinceChange('reg'); }
+  function regDistrictChange() { addrDistrictChange('reg'); }
+  function regPalikaChange() { addrPalikaChange('reg'); }
   function setSession(data) {
     token = data.token; user = data.user;
     localStorage.setItem('ks_token', token);
@@ -1353,15 +1375,13 @@ const App = (() => {
           <button class="btn" style="margin-top:6px" onclick="App.saveCompleteProfile()">Next ${icon('chevron-right')}</button>
           <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px" onclick="App.logout()">Sign out</button>
         </div>`;
-      renderCpDistricts(u.district || '');
-      renderCpPalika(u.palika || '');
-      renderCpWard(u.ward != null ? String(u.ward) : '');
+      renderDistricts('cp', u.district || '');
+      renderPalika('cp', u.palika || '');
+      renderWard('cp', u.ward != null ? String(u.ward) : '');
     },
-    // Province changed -> reload its districts, and reset palika + ward below it.
-    cpProvinceChange() { ctx.cpDistrict = ''; renderCpDistricts(''); renderCpPalika(''); renderCpWard(''); },
-    cpDistrictChange() { renderCpPalika(''); renderCpWard(''); },
-    // Palika changed -> the ward list depends on it (e.g. Phungling has 11).
-    cpPalikaChange() { renderCpWard(''); },
+    cpProvinceChange() { addrProvinceChange('cp'); },
+    cpDistrictChange() { addrDistrictChange('cp'); },
+    cpPalikaChange() { addrPalikaChange('cp'); },
     async saveCompleteProfile() {
       const err = $('cp-err'); err.textContent = '';
       const name = $('cp-name').value.trim();
@@ -2209,32 +2229,45 @@ const App = (() => {
   /* Onboarding cascade: districts follow the chosen province, and the palika
      field follows the district — a dropdown where we have verified data
      (Taplejung), otherwise a free-text box so nothing is invented. */
-  function renderCpDistricts(selected) {
-    const sel = $('cp-district'); if (!sel) return;
-    const list = districtsOf(($('cp-province') || {}).value || '');
+  /* The province -> district -> palika -> ward cascade. `p` is the id prefix so
+     the same code drives both the register form ("reg") and the post-Google
+     onboarding screen ("cp"). */
+  function renderDistricts(p, selected) {
+    const sel = $(p + '-district'); if (!sel) return;
+    const list = districtsOf(($(p + '-province') || {}).value || '');
     sel.innerHTML = `<option value="">${list.length ? 'Select district' : 'Select a province first'}</option>`
       + list.map((d) => `<option value="${esc(d)}" ${d === selected ? 'selected' : ''}>${esc(d)}</option>`).join('');
     sel.disabled = !list.length;
   }
-  function renderCpPalika(selected) {
-    const sel = $('cp-palika'); if (!sel) return;
-    const units = unitsOf(($('cp-province') || {}).value || '', ($('cp-district') || {}).value || '');
+  function renderPalika(p, selected) {
+    const sel = $(p + '-palika'); if (!sel) return;
+    const units = unitsOf(($(p + '-province') || {}).value || '', ($(p + '-district') || {}).value || '');
     sel.innerHTML = `<option value="">${units.length ? 'Select palika / municipality' : 'Select a district first'}</option>`
       + units.map(([name]) => `<option value="${esc(name)}" ${name === selected ? 'selected' : ''}>${esc(name)}</option>`).join('');
     sel.disabled = !units.length;
   }
   /* Ward options come from the chosen local unit — each has its own ward count
      (Phungling Municipality has 11, Mikwa Khola has 5, and so on). */
-  function renderCpWard(selected) {
-    const sel = $('cp-ward'); if (!sel) return;
-    const palika = ($('cp-palika') || {}).value || '';
-    const units = unitsOf(($('cp-province') || {}).value || '', ($('cp-district') || {}).value || '');
+  function renderWard(p, selected) {
+    const sel = $(p + '-ward'); if (!sel) return;
+    const palika = ($(p + '-palika') || {}).value || '';
+    const units = unitsOf(($(p + '-province') || {}).value || '', ($(p + '-district') || {}).value || '');
     const found = units.find(([name]) => name === palika);
     const count = found ? found[1] : 0;
     sel.innerHTML = `<option value="">${count ? `Select ward (1–${count})` : 'Select a palika first'}</option>`
       + Array.from({ length: count }, (_, i) => i + 1)
           .map((w) => `<option value="${w}" ${String(w) === String(selected) ? 'selected' : ''}>Ward No. ${w}</option>`).join('');
     sel.disabled = !count;
+  }
+  // Shared cascade handlers — each level resets everything below it.
+  function addrProvinceChange(p) { renderDistricts(p, ''); renderPalika(p, ''); renderWard(p, ''); }
+  function addrDistrictChange(p) { renderPalika(p, ''); renderWard(p, ''); }
+  function addrPalikaChange(p) { renderWard(p, ''); }
+  // Fill the province dropdown for a form (options are identical for both).
+  function fillProvinces(p, selected) {
+    const sel = $(p + '-province'); if (!sel) return;
+    sel.innerHTML = '<option value="">Select province</option>'
+      + Object.keys(NEPAL_DATA).map((n) => `<option value="${esc(n)}" ${n === selected ? 'selected' : ''}>${esc(n)}</option>`).join('');
   }
 
   // Rebuild just the composer's photo strip (never the whole screen, so text
@@ -2728,13 +2761,19 @@ const App = (() => {
     startIconObserver(); // render <i data-lucide> placeholders into SVG icons
     if (await handleResetLink()) return; // opened via a password-reset link
     if (token && user) { boot(); }
-    else { $('auth-view').classList.remove('hidden'); setupGoogleSignIn(); }
+    else {
+      $('auth-view').classList.remove('hidden');
+      // Prime the register form's address cascade.
+      fillProvinces('reg', '');
+      renderDistricts('reg', ''); renderPalika('reg', ''); renderWard('reg', '');
+      setupGoogleSignIn();
+    }
   }
 
   // Note: detect/submitFarm/submitCrop/submitUpdate/addPrice/broadcast/saveExpert/
   // toggleUser live on the `screens` object, so expose them via thin wrappers.
   return {
-    login, register, onRoleChange, toggleAuth, logout, go, sendMsg, openExpertChat, init, togglePw, forgotPassword,
+    login, register, onRoleChange, toggleAuth, logout, go, sendMsg, openExpertChat, init, togglePw, forgotPassword, regProvinceChange, regDistrictChange, regPalikaChange,
     filterExperts, toggleSelectExpert, clearExpertSel, deleteSelectedExperts,
     detect: (...a) => screens.detect(...a),
     submitFarm: (...a) => screens.submitFarm(...a),
