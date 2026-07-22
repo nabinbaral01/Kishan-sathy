@@ -95,7 +95,7 @@ const App = (() => {
 
   // Like confirmDialog but with a text input. Resolves the entered string, or
   // null if cancelled. Used for admin password reset and email prompts.
-  function promptDialog(message, { title = 'Enter a value', ok = 'OK', cancel = 'Cancel', placeholder = '', type = 'text', value = '' } = {}) {
+  function promptDialog(message, { title = 'Enter a value', ok = 'OK', cancel = 'Cancel', placeholder = '', type = 'text', value = '', error = '' } = {}) {
     return new Promise((resolve) => {
       const overlay = document.createElement('div');
       overlay.className = 'modal-overlay';
@@ -103,6 +103,7 @@ const App = (() => {
         <div class="modal" role="dialog" aria-modal="true">
           <h3 class="modal-title"></h3>
           <p class="modal-msg"></p>
+          <p class="modal-err"></p>
           <input class="modal-input" style="margin:0 0 12px"/>
           <div class="modal-actions">
             <button class="btn btn-sm btn-ghost" data-act="cancel"></button>
@@ -111,6 +112,10 @@ const App = (() => {
         </div>`;
       overlay.querySelector('.modal-title').textContent = title;
       overlay.querySelector('.modal-msg').textContent = message;
+      // Errors must live inside the dialog — a toast would sit behind the overlay.
+      const errEl = overlay.querySelector('.modal-err');
+      errEl.textContent = error || '';
+      errEl.style.display = error ? 'block' : 'none';
       const input = overlay.querySelector('.modal-input');
       input.type = type; input.placeholder = placeholder; input.value = value;
       overlay.querySelector('[data-act=cancel]').textContent = cancel;
@@ -2530,33 +2535,37 @@ const App = (() => {
 
     // Check the code straight away so a wrong one is flagged here — never after
     // the user has already typed a new password.
+    let codeErr = '';
     for (;;) {
       const entered = await promptDialog(`Enter the 6-digit code we emailed to ${email}.`, {
-        title: 'Enter code', ok: 'Verify', placeholder: '123456',
+        title: 'Enter code', ok: 'Verify', placeholder: '123456', error: codeErr,
       });
       if (entered === null) return;
       const code = (entered || '').trim();
-      if (!code) { toast('Please enter the code'); continue; }
+      if (!code) { codeErr = '⚠️ Please enter the code.'; continue; }
 
       try {
         await api('/auth/verify-code', { method: 'POST', body: { email, code } });
       } catch (e) {
-        toast(e.message);
-        if (/incorrect code/i.test(e.message || '')) continue; // wrong -> ask again
-        return; // expired or too many attempts -> stop
+        // Wrong code -> re-ask with the warning shown inside the dialog.
+        if (/incorrect code/i.test(e.message || '')) { codeErr = '⚠️ ' + e.message; continue; }
+        toast(e.message); // expired / too many attempts -> stop
+        return;
       }
 
       // Code confirmed — now it's safe to collect the new password.
+      let passErr = '';
       for (;;) {
         const pass = await promptDialog('Code verified ✓ Choose a new password.', {
-          title: 'New password', ok: 'Save password', placeholder: 'At least 4 characters', type: 'password',
+          title: 'New password', ok: 'Save password', placeholder: 'At least 4 characters',
+          type: 'password', error: passErr,
         });
         if (pass === null) return;
-        if (!pass || pass.length < 4) { toast('Password must be at least 4 characters'); continue; }
+        if (!pass || pass.length < 4) { passErr = '⚠️ Password must be at least 4 characters.'; continue; }
         try {
           await api('/auth/reset', { method: 'POST', body: { email, code, password: pass } });
           return toast('Password updated — please log in with your new password.');
-        } catch (e) { toast(e.message); return; }
+        } catch (e) { passErr = '⚠️ ' + e.message; }
       }
     }
   }
