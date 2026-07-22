@@ -180,6 +180,36 @@ const App = (() => {
       setSession(data);
     } catch (e) { err.textContent = e.message; }
   }
+  // Passwordless sign-in: email a 6-digit code, then exchange it for a session.
+  async function emailCodeLogin() {
+    const raw = await promptDialog('Enter your email and we will send you a 6-digit sign-in code.', {
+      title: 'Sign in with email', ok: 'Send code', placeholder: 'you@example.com', type: 'email',
+    });
+    if (raw === null) return;
+    const email = (raw || '').trim();
+    if (!email) return toast('Please enter your email');
+
+    try {
+      const r = await api('/auth/login-code', { method: 'POST', body: { email } });
+      toast(r.message || 'We emailed you a sign-in code.');
+    } catch (e) { return toast(e.message); }
+
+    for (;;) {
+      const code = await promptDialog(`Enter the 6-digit code we emailed to ${email}.`, {
+        title: 'Enter code', ok: 'Sign in', placeholder: '123456',
+      });
+      if (code === null) return;
+      if (!code.trim()) { toast('Please enter the code'); continue; }
+      try {
+        const data = await api('/auth/login-code/verify', { method: 'POST', body: { email, code: code.trim() } });
+        return setSession(data);
+      } catch (e) {
+        toast(e.message);
+        if (!/incorrect code/i.test(e.message || '')) return; // expired / too many -> stop
+      }
+    }
+  }
+
   // "Continue with Google": receives the ID token from Google Identity Services,
   // exchanges it for our session token.
   async function googleLogin(response) {
@@ -2584,7 +2614,7 @@ const App = (() => {
   // Note: detect/submitFarm/submitCrop/submitUpdate/addPrice/broadcast/saveExpert/
   // toggleUser live on the `screens` object, so expose them via thin wrappers.
   return {
-    login, register, onRoleChange, toggleAuth, logout, go, sendMsg, openExpertChat, init, togglePw, forgotPassword,
+    login, register, onRoleChange, toggleAuth, logout, go, sendMsg, openExpertChat, init, togglePw, forgotPassword, emailCodeLogin,
     filterExperts, toggleSelectExpert, clearExpertSel, deleteSelectedExperts,
     detect: (...a) => screens.detect(...a),
     submitFarm: (...a) => screens.submitFarm(...a),
