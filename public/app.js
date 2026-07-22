@@ -180,6 +180,35 @@ const App = (() => {
       setSession(data);
     } catch (e) { err.textContent = e.message; }
   }
+  // "Continue with Google": receives the ID token from Google Identity Services,
+  // exchanges it for our session token.
+  async function googleLogin(response) {
+    const err = $('login-err'); if (err) err.textContent = '';
+    try {
+      const data = await api('/auth/google', { method: 'POST', body: { credential: response.credential } });
+      setSession(data);
+    } catch (e) { if (err) err.textContent = e.message; else toast(e.message); }
+  }
+
+  // Fetch the public Google client id and, if configured, render the official
+  // "Sign in with Google" button. Silently does nothing when not set up yet.
+  async function setupGoogleSignIn() {
+    let cfg;
+    try { cfg = await api('/auth/config'); } catch { return; }
+    if (!cfg || !cfg.googleClientId) return;
+    // Wait for Google's script (loaded async in index.html) to be ready.
+    let tries = 0;
+    while (!(window.google && google.accounts && google.accounts.id) && tries < 40) {
+      await new Promise((r) => setTimeout(r, 100)); tries++;
+    }
+    if (!(window.google && google.accounts && google.accounts.id)) return;
+    google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: googleLogin });
+    document.querySelectorAll('.google-btn-box').forEach((box) => {
+      box.innerHTML = '';
+      google.accounts.id.renderButton(box, { theme: 'outline', size: 'large', width: 260, text: 'continue_with' });
+    });
+  }
+
   // Ward only makes sense for farmers — hide it when registering as an expert.
   function onRoleChange() {
     const wardEl = $('reg-ward');
@@ -2521,7 +2550,7 @@ const App = (() => {
     startIconObserver(); // render <i data-lucide> placeholders into SVG icons
     if (await handleResetLink()) return; // opened via a password-reset link
     if (token && user) { boot(); }
-    else { $('auth-view').classList.remove('hidden'); }
+    else { $('auth-view').classList.remove('hidden'); setupGoogleSignIn(); }
   }
 
   // Note: detect/submitFarm/submitCrop/submitUpdate/addPrice/broadcast/saveExpert/

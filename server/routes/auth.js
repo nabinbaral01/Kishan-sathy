@@ -120,6 +120,60 @@ router.post('/register', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/auth/google { credential } — "Sign in with Google".
+ * `credential` is the ID token from Google Identity Services. We verify it with
+ * Google, then log in the matching email or auto-create a farmer account.
+ */
+router.post('/google', async (req, res) => {
+  const credential = req.body?.credential;
+  if (!credential) return res.status(400).json({ error: 'Missing Google credential' });
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) return res.status(503).json({ error: 'Google sign-in is not set up yet.' });
+
+  // Verify the ID token with Google (checks signature/expiry for us).
+  let payload;
+  try {
+    const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(credential));
+    payload = await r.json();
+    if (!r.ok) throw new Error(payload?.error_description || 'Token rejected by Google');
+  } catch (e) {
+    return res.status(401).json({ error: 'Could not verify Google sign-in. Please try again.' });
+  }
+  // The token must be for THIS app, from Google, verified, and non-expired.
+  if (payload.aud !== clientId) return res.status(401).json({ error: 'This Google sign-in is not for this app.' });
+  if (payload.iss !== 'accounts.google.com' && payload.iss !== 'https://accounts.google.com') {
+    return res.status(401).json({ error: 'Invalid Google token issuer.' });
+  }
+  if (payload.email_verified === 'false' || payload.email_verified === false) {
+    return res.status(401).json({ error: 'Your Google email is not verified.' });
+  }
+  const email = (payload.email || '').toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Google did not share an email.' });
+
+  let user = await get(`SELECT * FROM users WHERE lower(email) = ?`, [email]);
+  if (!user) {
+    // Auto-create a farmer account from the Google profile. No usable password
+    // (a random hash) — they sign in with Google, or use "forgot password".
+    const randomHash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 10);
+    const info = await run(
+      `INSERT INTO users (name, role, email, password_hash, language) VALUES (?, 'farmer', ?, ?, 'en')`,
+      [payload.name || email.split('@')[0], email, randomHash]
+    );
+    user = await get(`SELECT * FROM users WHERE id = ?`, [info.lastInsertRowid]);
+  }
+  if (!user.active) return res.status(403).json({ error: 'Account disabled. Contact admin.' });
+
+  const token = signToken(user);
+  delete user.password_hash;
+  res.json({ token, user });
+});
+
+/** GET /api/auth/config -> public client config for the login screen (Google id). */
+router.get('/config', (_req, res) => {
+  res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || null });
+});
+
 /** POST /api/auth/login  { identifier (phone or email), password } */
 router.post('/login', async (req, res) => {
   const { identifier, phone, email, password } = req.body || {};
